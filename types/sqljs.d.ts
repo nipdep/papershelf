@@ -1,15 +1,15 @@
 declare module "sql.js" {
-  interface QueryExecResult {
+  export interface QueryExecResult {
     columns: string[];
     values: Array<Array<string | number | null>>;
   }
 
-  interface Statement {
+  export interface Statement {
     run(params?: Array<string | number | null>): void;
     free(): void;
   }
 
-  interface Database {
+  export interface Database {
     run(sql: string, params?: Array<string | number | null>): void;
     exec(sql: string, params?: Array<string | number | null>): QueryExecResult[];
     prepare(sql: string): Statement;
@@ -17,7 +17,7 @@ declare module "sql.js" {
     close(): void;
   }
 
-  interface SqlJsStatic {
+  export interface SqlJsStatic {
     Database: new (data?: Uint8Array) => Database;
   }
 
@@ -28,4 +28,5 @@ declare module "sql.js" {
 
 declare module "sql.js/dist/sql-asm.js" {
   export { default } from "sql.js";
+  export * from "sql.js";
 }

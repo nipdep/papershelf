@@ -3,6 +3,7 @@ import Link from "next/link";
 import { auth } from "@/auth";
 import { SignInButton } from "@/components/auth-buttons";
 import { LibraryCard } from "@/components/library-card";
+import { AppError } from "@/lib/errors";
 import { isConfiguredForGoogleAuth } from "@/lib/env";
 import { listLibrariesForSession } from "@/lib/server/library-service";
 
@@ -86,7 +87,32 @@ export default async function HomePage({
     );
   }
 
-  const libraries = await listLibrariesForSession(session);
+  let libraries;
+  try {
+    libraries = await listLibrariesForSession(session);
+  } catch (error) {
+    if (error instanceof AppError && error.code === "NOT_AUTHENTICATED") {
+      return (
+        <main className="workspace hero-center">
+          <section className="card hero-panel glass-card stack">
+            <div className="title-cluster">
+              <p className="eyebrow">Session expired</p>
+              <h1>Your Google connection needs to be refreshed.</h1>
+              <p>
+                Papershelf could not read your Drive libraries with the current Google
+                session. Sign in again to reconnect the app.
+              </p>
+            </div>
+            <div className="hero-actions">
+              <SignInButton />
+            </div>
+          </section>
+        </main>
+      );
+    }
+
+    throw error;
+  }
   const accessibleLibraries = libraries
     .filter((library) => library.accessible)
     .filter((library) =>

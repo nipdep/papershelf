@@ -1,50 +1,63 @@
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import path from "node:path";
-import { DatabaseSync } from "node:sqlite";
+import initSqlJs, { Database, QueryExecResult, SqlJsStatic } from "sql.js/dist/sql-asm.js";
 
 import { AppError } from "@/lib/errors";
 import { IndexedFolder, IndexedPaper, LibraryIndexData, SearchResult } from "@/lib/models";
 
-function createTempDbPath(prefix: string) {
-  return mkdtemp(path.join(tmpdir(), `${prefix}-`)).then((dir) => ({
-    dir,
-    dbPath: path.join(dir, "index.sqlite")
-  }));
+type SqlValue = string | number | null;
+type SqlRow = Record<string, SqlValue>;
+
+let sqlJsPromise: Promise<SqlJsStatic> | undefined;
+
+async function getSqlJs() {
+  if (!sqlJsPromise) {
+    sqlJsPromise = initSqlJs();
+  }
+
+  return sqlJsPromise;
 }
 
-async function withTempDb<T>(
-  mode: "empty" | "from-bytes",
-  callback: (db: DatabaseSync, dbPath: string) => Promise<T> | T,
+async function withDb<T>(
+  callback: (db: Database) => Promise<T> | T,
   bytes?: Uint8Array
 ): Promise<T> {
-  const { dir, dbPath } = await createTempDbPath("papershelf");
+  const SQL = await getSqlJs();
+  const db = new SQL.Database(bytes);
 
-  if (mode === "from-bytes" && bytes) {
-    await writeFile(dbPath, bytes);
-  }
-
-  const db = new DatabaseSync(dbPath);
   try {
-    return await callback(db, dbPath);
+    return await callback(db);
   } finally {
     db.close();
-    await rm(dir, { recursive: true, force: true });
   }
 }
 
-function getSingleStringValue(db: DatabaseSync, key: string): string | undefined {
-  const row = db.prepare("SELECT value FROM app_meta WHERE key = ?;").get(key) as
-    | { value?: string }
-    | undefined;
-  return row?.value;
+function queryRows(
+  db: Database,
+  sql: string,
+  params?: SqlValue[]
+): SqlRow[] {
+  const [result] = db.exec(sql, params);
+  if (!result) {
+    return [];
+  }
+
+  return result.values.map((values: QueryExecResult["values"][number]) =>
+    Object.fromEntries(result.columns.map((column: string, index: number) => [column, values[index] ?? null]))
+  ) as SqlRow[];
+}
+
+function getSingleStringValue(
+  db: Database,
+  key: string
+): string | undefined {
+  const row = queryRows(db, "SELECT value FROM app_meta WHERE key = ?;", [key])[0];
+  return typeof row?.value === "string" ? row.value : undefined;
 }
 
 export async function createIndexSqlite(input: {
   folders: IndexedFolder[];
   papers: IndexedPaper[];
 }) {
-  return withTempDb("empty", async (db, dbPath) => {
+  return withDb((db) => {
     db.exec(`
       CREATE TABLE IF NOT EXISTS app_meta (
         key TEXT PRIMARY KEY,
@@ -84,51 +97,50 @@ export async function createIndexSqlite(input: {
       CREATE INDEX IF NOT EXISTS idx_papers_path ON papers(path);
     `);
 
-    db.prepare(
+    db.run(
       `INSERT OR REPLACE INTO app_meta (key, value) VALUES
         ('schema_version', '1'),
         ('generated_at', ?),
-        ('app_name', 'drive-paper-library');`
-    ).run(new Date().toISOString());
-
-    const insertFolder = db.prepare(`
-      INSERT INTO folders (
-        drive_folder_id, parent_folder_id, name, path, depth, modified_time, created_time
-      ) VALUES (?, ?, ?, ?, ?, ?, ?)
-    `);
+        ('app_name', 'drive-paper-library');`,
+      [new Date().toISOString()]
+    );
 
     for (const folder of input.folders) {
-      insertFolder.run(
-        folder.driveFolderId,
-        folder.parentFolderId,
-        folder.name,
-        folder.path,
-        folder.depth,
-        folder.modifiedTime ?? null,
-        folder.createdTime ?? null
+      db.run(
+        `INSERT INTO folders (
+          drive_folder_id, parent_folder_id, name, path, depth, modified_time, created_time
+        ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        [
+          folder.driveFolderId,
+          folder.parentFolderId,
+          folder.name,
+          folder.path,
+          folder.depth,
+          folder.modifiedTime ?? null,
+          folder.createdTime ?? null
+        ]
       );
     }
 
-    const insertPaper = db.prepare(`
-      INSERT INTO papers (
-        drive_file_id, drive_folder_id, title, file_name, path, mime_type,
-        modified_time, created_time, size_bytes, web_view_link, indexed_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `);
-
     for (const paper of input.papers) {
-      insertPaper.run(
-        paper.driveFileId,
-        paper.driveFolderId,
-        paper.title,
-        paper.fileName,
-        paper.path,
-        paper.mimeType,
-        paper.modifiedTime ?? null,
-        paper.createdTime ?? null,
-        paper.sizeBytes ?? null,
-        paper.webViewLink ?? null,
-        paper.indexedAt
+      db.run(
+        `INSERT INTO papers (
+          drive_file_id, drive_folder_id, title, file_name, path, mime_type,
+          modified_time, created_time, size_bytes, web_view_link, indexed_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          paper.driveFileId,
+          paper.driveFolderId,
+          paper.title,
+          paper.fileName,
+          paper.path,
+          paper.mimeType,
+          paper.modifiedTime ?? null,
+          paper.createdTime ?? null,
+          paper.sizeBytes ?? null,
+          paper.webViewLink ?? null,
+          paper.indexedAt
+        ]
       );
     }
 
@@ -150,33 +162,35 @@ export async function createIndexSqlite(input: {
       hasFts = false;
     }
 
-    db.prepare(
-      "INSERT OR REPLACE INTO app_meta (key, value) VALUES ('fts_enabled', ?);"
-    ).run(hasFts ? "1" : "0");
+    db.run("INSERT OR REPLACE INTO app_meta (key, value) VALUES ('fts_enabled', ?);", [
+      hasFts ? "1" : "0"
+    ]);
 
-    return new Uint8Array(await readFile(dbPath));
+    return db.export();
   });
 }
 
 export async function parseIndexSqlite(bytes: Uint8Array): Promise<LibraryIndexData> {
-  return withTempDb("from-bytes", (db) => {
+  return withDb((db) => {
     try {
-      const folderRows = db.prepare(
+      const folderRows = queryRows(
+        db,
         `
         SELECT drive_folder_id, parent_folder_id, name, path, depth, modified_time, created_time
         FROM folders
         ORDER BY depth, path
       `
-      ).all() as Array<Record<string, string | number | null>>;
+      );
 
-      const paperRows = db.prepare(
+      const paperRows = queryRows(
+        db,
         `
         SELECT drive_file_id, drive_folder_id, title, file_name, path, mime_type,
                modified_time, created_time, size_bytes, web_view_link, indexed_at
         FROM papers
         ORDER BY title
       `
-      ).all() as Array<Record<string, string | number | null>>;
+      );
 
       const folders: IndexedFolder[] = folderRows.map((row) => ({
         driveFolderId: String(row.drive_folder_id),
@@ -222,41 +236,35 @@ export async function searchIndexSqlite(
     return [];
   }
 
-  return withTempDb("from-bytes", (db) => {
+  return withDb((db) => {
     const isFtsEnabled = getSingleStringValue(db, "fts_enabled") === "1";
 
     const rows = isFtsEnabled
-      ? (db
-          .prepare(
-            `
-            SELECT p.drive_file_id, p.drive_folder_id, p.title, p.file_name, p.path, p.mime_type,
-                   p.modified_time, p.created_time, p.size_bytes, p.web_view_link, p.indexed_at
-            FROM papers_fts f
-            JOIN papers p ON p.drive_file_id = f.drive_file_id
-            WHERE papers_fts MATCH ?
-            ORDER BY bm25(papers_fts)
+      ? queryRows(
+          db,
           `
-          )
-          .all(trimmed.replace(/\s+/g, " OR ")) as Array<
-          Record<string, string | number | null>
-        >)
-      : (db
-          .prepare(
-            `
-            SELECT drive_file_id, drive_folder_id, title, file_name, path, mime_type,
-                   modified_time, created_time, size_bytes, web_view_link, indexed_at
-            FROM papers
-            WHERE lower(title) LIKE ?
-               OR lower(file_name) LIKE ?
-               OR lower(path) LIKE ?
-            ORDER BY title
+          SELECT p.drive_file_id, p.drive_folder_id, p.title, p.file_name, p.path, p.mime_type,
+                 p.modified_time, p.created_time, p.size_bytes, p.web_view_link, p.indexed_at
+          FROM papers_fts f
+          JOIN papers p ON p.drive_file_id = f.drive_file_id
+          WHERE papers_fts MATCH ?
+          ORDER BY bm25(papers_fts)
+        `,
+          [trimmed.replace(/\s+/g, " OR ")]
+        )
+      : queryRows(
+          db,
           `
-          )
-          .all(
-            `%${trimmed.toLowerCase()}%`,
-            `%${trimmed.toLowerCase()}%`,
-            `%${trimmed.toLowerCase()}%`
-          ) as Array<Record<string, string | number | null>>);
+          SELECT drive_file_id, drive_folder_id, title, file_name, path, mime_type,
+                 modified_time, created_time, size_bytes, web_view_link, indexed_at
+          FROM papers
+          WHERE lower(title) LIKE ?
+             OR lower(file_name) LIKE ?
+             OR lower(path) LIKE ?
+          ORDER BY title
+        `,
+          [`%${trimmed.toLowerCase()}%`, `%${trimmed.toLowerCase()}%`, `%${trimmed.toLowerCase()}%`]
+        );
 
     return rows.map((row) => ({
       driveFileId: String(row.drive_file_id),
