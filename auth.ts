@@ -1,7 +1,7 @@
 import NextAuth from "next-auth";
 import Google from "next-auth/providers/google";
 
-import { isConfiguredForGoogleAuth, isOwnerEmail } from "@/lib/env";
+import { getAuthSecret, isConfiguredForGoogleAuth, isOwnerEmail } from "@/lib/env";
 
 const providers = isConfiguredForGoogleAuth()
   ? [
@@ -27,10 +27,16 @@ const providers = isConfiguredForGoogleAuth()
   : [];
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
+  secret: getAuthSecret(),
   trustHost: true,
   providers,
   session: {
     strategy: "jwt"
+  },
+  logger: {
+    error(error) {
+      console.error("[auth]", error);
+    }
   },
   callbacks: {
     jwt({ token, account, profile }) {

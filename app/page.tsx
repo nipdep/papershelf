@@ -23,7 +23,7 @@ export default async function HomePage({
             <p className="eyebrow">Setup required</p>
             <h1>Papershelf needs Google OAuth before it can show libraries.</h1>
             <p>
-              Add the documented Google and NextAuth environment variables, then sign in
+              Add the documented Google and Auth.js environment variables, then sign in
               to index Drive-backed paper folders.
             </p>
           </div>
@@ -31,6 +31,7 @@ export default async function HomePage({
             <p className="muted">
               Required: <code className="inline-code">GOOGLE_CLIENT_ID</code>,{" "}
               <code className="inline-code">GOOGLE_CLIENT_SECRET</code>,{" "}
+              <code className="inline-code">AUTH_SECRET</code> or{" "}
               <code className="inline-code">NEXTAUTH_SECRET</code>,{" "}
               <code className="inline-code">SYSTEM_OWNER_EMAIL</code>.
             </p>

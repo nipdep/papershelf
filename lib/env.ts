@@ -1,12 +1,37 @@
 import { z } from "zod";
 
+const optionalString = () =>
+  z.preprocess(
+    (value) =>
+      typeof value === "string" && value.trim().length === 0 ? undefined : value,
+    z.string().min(1).optional()
+  );
+
 const envSchema = z.object({
-  GOOGLE_CLIENT_ID: z.string().min(1).optional(),
-  GOOGLE_CLIENT_SECRET: z.string().min(1).optional(),
-  NEXTAUTH_SECRET: z.string().min(1).optional(),
-  NEXTAUTH_URL: z.string().url().optional(),
-  SYSTEM_OWNER_EMAIL: z.string().email().optional(),
-  DEFAULT_LIBRARY_FOLDER_IDS: z.string().optional()
+  GOOGLE_CLIENT_ID: optionalString(),
+  GOOGLE_CLIENT_SECRET: optionalString(),
+  AUTH_SECRET: optionalString(),
+  NEXTAUTH_SECRET: optionalString(),
+  AUTH_URL: z.preprocess(
+    (value) =>
+      typeof value === "string" && value.trim().length === 0 ? undefined : value,
+    z.string().url().optional()
+  ),
+  NEXTAUTH_URL: z.preprocess(
+    (value) =>
+      typeof value === "string" && value.trim().length === 0 ? undefined : value,
+    z.string().url().optional()
+  ),
+  SYSTEM_OWNER_EMAIL: z.preprocess(
+    (value) =>
+      typeof value === "string" && value.trim().length === 0 ? undefined : value,
+    z.string().email().optional()
+  ),
+  DEFAULT_LIBRARY_FOLDER_IDS: z.preprocess(
+    (value) =>
+      typeof value === "string" && value.trim().length === 0 ? undefined : value,
+    z.string().optional()
+  )
 });
 
 type Env = z.infer<typeof envSchema>;
@@ -15,11 +40,23 @@ export function getEnv(): Env {
   return envSchema.parse({
     GOOGLE_CLIENT_ID: process.env.GOOGLE_CLIENT_ID,
     GOOGLE_CLIENT_SECRET: process.env.GOOGLE_CLIENT_SECRET,
+    AUTH_SECRET: process.env.AUTH_SECRET,
     NEXTAUTH_SECRET: process.env.NEXTAUTH_SECRET,
+    AUTH_URL: process.env.AUTH_URL,
     NEXTAUTH_URL: process.env.NEXTAUTH_URL,
     SYSTEM_OWNER_EMAIL: process.env.SYSTEM_OWNER_EMAIL,
     DEFAULT_LIBRARY_FOLDER_IDS: process.env.DEFAULT_LIBRARY_FOLDER_IDS
   });
+}
+
+export function getAuthSecret(): string | undefined {
+  const env = getEnv();
+  return env.AUTH_SECRET ?? env.NEXTAUTH_SECRET;
+}
+
+export function getAuthUrl(): string | undefined {
+  const env = getEnv();
+  return env.AUTH_URL ?? env.NEXTAUTH_URL;
 }
 
 export function isConfiguredForGoogleAuth(): boolean {
@@ -27,7 +64,7 @@ export function isConfiguredForGoogleAuth(): boolean {
   return Boolean(
     env.GOOGLE_CLIENT_ID &&
       env.GOOGLE_CLIENT_SECRET &&
-      env.NEXTAUTH_SECRET &&
+      (env.AUTH_SECRET ?? env.NEXTAUTH_SECRET) &&
       env.SYSTEM_OWNER_EMAIL
   );
 }

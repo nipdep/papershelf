@@ -41,8 +41,8 @@ Owner config
 
 - `GOOGLE_CLIENT_ID`
 - `GOOGLE_CLIENT_SECRET`
-- `NEXTAUTH_SECRET`
-- `NEXTAUTH_URL`
+- `AUTH_SECRET` preferred, `NEXTAUTH_SECRET` also supported
+- `AUTH_URL` preferred, `NEXTAUTH_URL` also supported
 - `SYSTEM_OWNER_EMAIL`
 - `DEFAULT_LIBRARY_FOLDER_IDS` optional comma-separated bootstrap list
 

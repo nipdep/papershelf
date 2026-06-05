@@ -62,9 +62,13 @@ drive
 ```env
 GOOGLE_CLIENT_ID=
 GOOGLE_CLIENT_SECRET=
-NEXTAUTH_SECRET=
-NEXTAUTH_URL=
+AUTH_SECRET=
+AUTH_URL=
 SYSTEM_OWNER_EMAIL=owner@example.com
+
+# Legacy aliases also work:
+# NEXTAUTH_SECRET=
+# NEXTAUTH_URL=
 ```
 
 Optional:

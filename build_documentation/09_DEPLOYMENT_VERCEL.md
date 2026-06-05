@@ -25,8 +25,11 @@ one or more Drive library folders
 ```env
 GOOGLE_CLIENT_ID=
 GOOGLE_CLIENT_SECRET=
-NEXTAUTH_SECRET=
-NEXTAUTH_URL=https://your-app.vercel.app
+AUTH_SECRET=
+AUTH_URL=https://your-app.vercel.app
+# Legacy aliases still supported:
+# NEXTAUTH_SECRET=
+# NEXTAUTH_URL=https://your-app.vercel.app
 SYSTEM_OWNER_EMAIL=owner@example.com
 ```
 
@@ -60,7 +63,7 @@ http://localhost:3000/api/auth/callback/google
 1. Import GitHub repo into Vercel.
 2. Set environment variables.
 3. Deploy.
-4. Confirm `NEXTAUTH_URL` matches production URL.
+4. Confirm `AUTH_URL` matches the production URL exactly.
 5. Sign in with `SYSTEM_OWNER_EMAIL`.
 6. Open Admin page.
 7. Add Drive library root.
@@ -73,8 +76,11 @@ http://localhost:3000/api/auth/callback/google
 ```env
 GOOGLE_CLIENT_ID=
 GOOGLE_CLIENT_SECRET=
-NEXTAUTH_SECRET=dev-secret-change-me
-NEXTAUTH_URL=http://localhost:3000
+AUTH_SECRET=dev-secret-change-me
+AUTH_URL=http://localhost:3000
+# Legacy aliases still supported:
+# NEXTAUTH_SECRET=dev-secret-change-me
+# NEXTAUTH_URL=http://localhost:3000
 SYSTEM_OWNER_EMAIL=owner@example.com
 ```
 
