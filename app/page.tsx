@@ -3,7 +3,7 @@ import Link from "next/link";
 import { auth } from "@/auth";
 import { SignInButton } from "@/components/auth-buttons";
 import { LibraryCard } from "@/components/library-card";
-import { AppError } from "@/lib/errors";
+import { asAppError } from "@/lib/errors";
 import { isConfiguredForGoogleAuth } from "@/lib/env";
 import { listLibrariesForSession } from "@/lib/server/library-service";
 
@@ -91,7 +91,8 @@ export default async function HomePage({
   try {
     libraries = await listLibrariesForSession(session);
   } catch (error) {
-    if (error instanceof AppError && error.code === "NOT_AUTHENTICATED") {
+    const appError = asAppError(error);
+    if (appError.code === "NOT_AUTHENTICATED") {
       return (
         <main className="workspace hero-center">
           <section className="card hero-panel glass-card stack">
@@ -111,7 +112,7 @@ export default async function HomePage({
       );
     }
 
-    throw error;
+    throw appError;
   }
   const accessibleLibraries = libraries
     .filter((library) => library.accessible)

@@ -18,12 +18,34 @@ export class AppError extends Error {
     this.name = "AppError";
     this.code = code;
     this.status = status;
+    Object.setPrototypeOf(this, AppError.prototype);
   }
+}
+
+export function isAppError(error: unknown): error is AppError {
+  return Boolean(
+    error &&
+      typeof error === "object" &&
+      "code" in error &&
+      typeof error.code === "string" &&
+      "status" in error &&
+      typeof error.status === "number" &&
+      "message" in error &&
+      typeof error.message === "string"
+  );
 }
 
 export function asAppError(error: unknown): AppError {
   if (error instanceof AppError) {
     return error;
+  }
+
+  if (isAppError(error)) {
+    return new AppError(error.code as AppErrorCode, error.message, error.status);
+  }
+
+  if (error instanceof Error) {
+    return new AppError("INVALID_REQUEST", error.message, 500);
   }
 
   return new AppError("INVALID_REQUEST", "Unexpected application error.", 500);
