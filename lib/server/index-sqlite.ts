@@ -1,5 +1,3 @@
-import path from "node:path";
-
 import initSqlJs from "sql.js";
 import type { Database, QueryExecResult, SqlJsStatic } from "sql.js";
 
@@ -10,16 +8,10 @@ type SqlValue = string | number | null;
 type SqlRow = Record<string, SqlValue>;
 
 let sqlJsPromise: Promise<SqlJsStatic> | undefined;
-const sqlWasmPath = path.join(process.cwd(), "node_modules/sql.js/dist/sql-wasm.wasm");
 
 async function getSqlJs() {
   if (!sqlJsPromise) {
-    sqlJsPromise = initSqlJs({
-      // Keep wasm loading on the supported entrypoint instead of the raw asm bundle.
-      locateFile(file) {
-        return file === "sql-wasm.wasm" ? sqlWasmPath : file;
-      }
-    });
+    sqlJsPromise = initSqlJs();
   }
 
   return sqlJsPromise;
