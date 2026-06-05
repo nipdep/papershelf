@@ -22,8 +22,10 @@ function renderBranch(
             className={`tree-link ${currentFolderId === folder.driveFolderId ? "active" : ""}`}
             href={`/library/${libraryId}?folder=${folder.driveFolderId}`}
           >
-            <span>{folder.depth === 0 ? "All papers" : folder.name}</span>
-            <span className="tree-meta">{folder.depth === 0 ? "/" : folder.depth}</span>
+            <span className="tree-label">
+              <span className="tree-icon">{folder.depth === 0 ? "▣" : "▸"}</span>
+              <span>{folder.depth === 0 ? "All Papers" : folder.name}</span>
+            </span>
           </Link>
           {renderBranch(folders, folder.driveFolderId, libraryId, currentFolderId)}
         </li>

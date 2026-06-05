@@ -16,29 +16,23 @@ export function PaperTable({
 }) {
   if (papers.length === 0) {
     return (
-      <section className="surface empty-panel">
-        <p className="muted">No papers match this view yet.</p>
+      <section className="finder-list-shell">
+        <div className="empty-panel">
+          <p className="muted">No papers match this folder yet.</p>
+        </div>
       </section>
     );
   }
 
   return (
-    <section className="pane">
-      <div className="pane-header">
-        <div className="pane-title">
-          <strong>Papers</strong>
-          <span className="muted">
-            {papers.length} item{papers.length === 1 ? "" : "s"}
-          </span>
-        </div>
-      </div>
-
-      <table className="paper-table">
+    <section className="finder-list-shell">
+      <table className="finder-table">
         <thead>
           <tr>
-            <th>Title</th>
-            <th>Path</th>
-            <th>Updated</th>
+            <th>Name</th>
+            <th>Date Modified</th>
+            <th>Size</th>
+            <th>Kind</th>
             <th />
           </tr>
         </thead>
@@ -47,36 +41,42 @@ export function PaperTable({
             const itemHref = `/library/${libraryId}?folder=${paper.driveFolderId}&paper=${paper.driveFileId}`;
             return (
               <tr
-                className={`paper-row ${
+                className={`finder-row ${
                   selectedPaperId === paper.driveFileId ? "active" : ""
                 }`}
                 key={paper.driveFileId}
               >
                 <td>
-                  <Link className="paper-title-link" href={itemHref as never}>
-                    <strong>{paper.title}</strong>
-                    <span className="paper-subtitle">{paper.fileName}</span>
+                  <Link className="finder-file-link" href={itemHref as never}>
+                    <span className="finder-file-icon">PDF</span>
+                    <span className="finder-file-copy">
+                      <strong>{paper.title}</strong>
+                      <span>{paper.fileName}</span>
+                    </span>
                   </Link>
                 </td>
-                <td className="muted">{paper.path}</td>
                 <td className="muted">
                   {paper.modifiedTime
-                    ? new Date(paper.modifiedTime).toLocaleDateString()
+                    ? new Date(paper.modifiedTime).toLocaleString()
                     : "Unknown"}
                 </td>
+                <td className="muted">
+                  {paper.sizeBytes ? `${Math.round(paper.sizeBytes / 1024)} KB` : "--"}
+                </td>
+                <td className="muted">PDF Document</td>
                 <td>
                   <div className="row-actions">
                     <details className="menu">
                       <summary aria-label={`Actions for ${paper.title}`}>•••</summary>
                       <div className="menu-popover">
                         <Link className="menu-link" href={itemHref as never}>
-                          <span>Inspect</span>
+                          <span>Reveal in preview</span>
                         </Link>
                         <Link
                           className="menu-link"
                           href={`/library/${libraryId}/paper/${paper.driveFileId}`}
                         >
-                          <span>Open preview</span>
+                          <span>Open full preview</span>
                         </Link>
                         {paper.webViewLink ? (
                           <a
@@ -90,7 +90,7 @@ export function PaperTable({
                         ) : null}
                         {canEdit ? (
                           <div className="menu-link">
-                            <span>Edit below</span>
+                            <span>Manage from preview pane</span>
                           </div>
                         ) : null}
                       </div>

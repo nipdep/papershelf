@@ -1,7 +1,6 @@
 import Link from "next/link";
 
 import { auth } from "@/auth";
-import { AppNav } from "@/components/app-nav";
 import { SignInButton } from "@/components/auth-buttons";
 import { LibraryCard } from "@/components/library-card";
 import { isConfiguredForGoogleAuth } from "@/lib/env";
@@ -79,84 +78,48 @@ export default async function HomePage({
     );
 
   return (
-    <main className="pane-layout">
-      <AppNav current="home" isOwner={session.user.isOwner} />
-      <section className="workspace">
-        <header className="page-header">
-          <div className="title-cluster">
-            <p className="eyebrow">Dashboard</p>
-            <h1>Libraries</h1>
-            <p>Open a shared paper collection and work inside a Finder-style layout.</p>
-          </div>
-          {session.user.isOwner ? (
-            <Link className="button button-secondary" href="/admin">
-              Open settings
-            </Link>
-          ) : null}
-        </header>
+    <main className="workspace">
+      <header className="page-header">
+        <div className="title-cluster">
+          <p className="eyebrow">Libraries</p>
+          <h1>Paper libraries</h1>
+          <p>Select a library and work inside a Finder-style paper browser.</p>
+        </div>
+        {session.user.isOwner ? (
+          <Link className="button button-secondary" href="/admin">
+            Settings
+          </Link>
+        ) : null}
+      </header>
 
-        <section className="dashboard-grid">
-          <div className="section-panel">
-            {libraries.length === 0 ? (
-              <section className="card empty-panel">
-                <p className="muted">
-                  {session.user.isOwner
-                    ? "No libraries yet. Add a Google Drive folder to begin."
-                    : "No paper libraries are configured for this app yet."}
-                </p>
-              </section>
-            ) : globalQuery && accessibleLibraries.length === 0 ? (
-              <section className="card empty-panel">
-                <p className="muted">
-                  No libraries matched <code className="inline-code">{globalQuery}</code>.
-                </p>
-              </section>
-            ) : accessibleLibraries.length === 0 ? (
-              <section className="card empty-panel">
-                <p className="muted">
-                  No accessible libraries found. Ask the library owner to share the Drive
-                  folder with your Google account.
-                </p>
-              </section>
-            ) : (
-              <section className="grid library-grid">
-                {accessibleLibraries.map((library) => (
-                  <LibraryCard key={library.id} library={library} />
-                ))}
-              </section>
-            )}
-          </div>
-
-          <aside className="section-panel">
-            <section className="card glass-card">
-              <div className="title-cluster">
-                <p className="eyebrow">Workspace model</p>
-                <h2>What changed</h2>
-                <p>
-                  The app now favors panels, inspectors, and contextual actions instead of
-                  button-heavy forms.
-                </p>
-              </div>
-            </section>
-            <section className="card">
-              <div className="info-grid">
-                <div className="info-row">
-                  <label>Left rail</label>
-                  <span>Libraries, settings, and hierarchy context</span>
-                </div>
-                <div className="info-row">
-                  <label>Center workspace</label>
-                  <span>Search, lists, and file-focused browsing</span>
-                </div>
-                <div className="info-row">
-                  <label>Right inspector</label>
-                  <span>Metadata, actions, and focused details</span>
-                </div>
-              </div>
-            </section>
-          </aside>
+      {libraries.length === 0 ? (
+        <section className="card empty-panel">
+          <p className="muted">
+            {session.user.isOwner
+              ? "No libraries yet. Add a Google Drive folder to begin."
+              : "No paper libraries are configured for this app yet."}
+          </p>
         </section>
-      </section>
+      ) : globalQuery && accessibleLibraries.length === 0 ? (
+        <section className="card empty-panel">
+          <p className="muted">
+            No libraries matched <code className="inline-code">{globalQuery}</code>.
+          </p>
+        </section>
+      ) : accessibleLibraries.length === 0 ? (
+        <section className="card empty-panel">
+          <p className="muted">
+            No accessible libraries found. Ask the library owner to share the Drive
+            folder with your Google account.
+          </p>
+        </section>
+      ) : (
+        <section className="grid library-grid">
+          {accessibleLibraries.map((library) => (
+            <LibraryCard key={library.id} library={library} />
+          ))}
+        </section>
+      )}
     </main>
   );
 }

@@ -29,7 +29,7 @@ describe("FolderTree", () => {
       />
     );
 
-    expect(screen.getByText("All papers")).toBeInTheDocument();
+    expect(screen.getByText("All Papers")).toBeInTheDocument();
     expect(screen.getByText("ML")).toBeInTheDocument();
   });
 });

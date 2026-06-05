@@ -7,7 +7,7 @@ import { PaperTable } from "@/components/paper-table";
 describe("PaperTable", () => {
   it("renders empty state", () => {
     render(<PaperTable canEdit={false} libraryId="lib" papers={[]} />);
-    expect(screen.getByText("No papers match this view yet.")).toBeInTheDocument();
+    expect(screen.getByText("No papers match this folder yet.")).toBeInTheDocument();
   });
 
   it("renders paper rows", () => {
@@ -30,6 +30,6 @@ describe("PaperTable", () => {
     );
 
     expect(screen.getByText("Paper")).toBeInTheDocument();
-    expect(screen.getByText("Edit below")).toBeInTheDocument();
+    expect(screen.getByText("PDF Document")).toBeInTheDocument();
   });
 });

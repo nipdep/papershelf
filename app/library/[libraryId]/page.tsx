@@ -3,7 +3,6 @@ import { revalidatePath } from "next/cache";
 import { notFound } from "next/navigation";
 
 import { auth } from "@/auth";
-import { AppNav } from "@/components/app-nav";
 import { FolderTree } from "@/components/folder-tree";
 import { PaperTable } from "@/components/paper-table";
 import { AppError } from "@/lib/errors";
@@ -17,6 +16,10 @@ import {
   uploadPaper
 } from "@/lib/server/library-service";
 import { requireSession } from "@/lib/server/authz";
+
+function previewUrlForPaper(driveFileId: string) {
+  return `https://drive.google.com/file/d/${driveFileId}/preview`;
+}
 
 export default async function LibraryPage({
   params,
@@ -105,9 +108,7 @@ export default async function LibraryPage({
   } catch (error) {
     if (error instanceof AppError && error.code === "INDEX_NOT_FOUND") {
       return (
-        <main className="pane-layout">
-          <AppNav current="library" isOwner={session.user.isOwner} />
-          <section className="workspace">
+        <main className="workspace">
             <header className="page-header">
               <div className="title-cluster">
                 <p className="eyebrow">Library</p>
@@ -160,7 +161,6 @@ export default async function LibraryPage({
                 </p>
               )}
             </section>
-          </section>
         </main>
       );
     }
@@ -187,125 +187,161 @@ export default async function LibraryPage({
     index.papers.find((paper) => paper.driveFileId === selectedPaperId) ??
     visiblePapers[0];
 
+  const folderOptions = index.folders.map((folder) => ({
+    value: folder.driveFolderId,
+    label: folder.depth === 0 ? "All Papers" : `${"  ".repeat(folder.depth)}${folder.name}`
+  }));
+
   return (
-    <main className="pane-layout">
-      <AppNav current="library" isOwner={session.user.isOwner} />
-      <section className="workspace">
-        <header className="page-header">
+    <main className="workspace workspace-finder">
+      <section className="finder-topbar">
+        <div className="finder-location">
           <div className="title-cluster">
             <p className="eyebrow">Library</p>
             <h1>{library.name}</h1>
             <p>
-              {visiblePapers.length} visible paper{visiblePapers.length === 1 ? "" : "s"} ·
-              {index.generatedAt
-                ? ` indexed ${new Date(index.generatedAt).toLocaleString()}`
-                : " index unavailable"}
+              {selectedFolder?.name ?? "All Papers"} · {visiblePapers.length} paper
+              {visiblePapers.length === 1 ? "" : "s"}
             </p>
           </div>
-          <div className="mini-actions">
-            <Link className="button button-secondary" href="/">
-              Libraries
-            </Link>
-            {library.canEdit ? (
-              <form action={rebuildAction}>
-                <button className="button button-secondary" type="submit">
-                  Refresh index
-                </button>
-              </form>
-            ) : null}
-          </div>
-        </header>
+        </div>
 
-        <section className="toolbar">
-          <form className="toolbar-search" method="get">
-            <input name="folder" type="hidden" value={folderId} />
-            <span className="muted">Search</span>
-            <input defaultValue={query} name="q" placeholder="title, filename, path" />
-          </form>
-          <div className="mini-actions">
+        <form className="toolbar-search finder-toolbar-search" method="get">
+          <input name="folder" type="hidden" value={folderId} />
+          {selectedPaper ? (
+            <input name="paper" type="hidden" value={selectedPaper.driveFileId} />
+          ) : null}
+          <span className="muted">Search</span>
+          <input defaultValue={query} name="q" placeholder="Search papers in this folder" />
+        </form>
+
+        <div className="mini-actions finder-topbar-actions">
+          <Link className="button button-ghost" href="/">
+            Libraries
+          </Link>
+          {library.webViewLink ? (
+            <a
+              className="button button-ghost"
+              href={library.webViewLink}
+              rel="noreferrer"
+              target="_blank"
+            >
+              Drive
+            </a>
+          ) : null}
+          {library.canEdit ? (
+            <details className="menu">
+              <summary className="button button-secondary">New</summary>
+              <div className="menu-popover menu-popover-wide">
+                <form action={createFolderAction}>
+                  <input name="parentFolderId" type="hidden" value={folderId} />
+                  <input name="name" type="hidden" value="New Folder" />
+                  <button className="menu-button" type="submit">
+                    <span>New folder in current location</span>
+                  </button>
+                </form>
+                <form action={uploadAction}>
+                  <input name="parentFolderId" type="hidden" value={folderId} />
+                  <label className="menu-file-picker">
+                    <span>Upload PDF to current folder</span>
+                    <input accept=".pdf,application/pdf" name="file" required type="file" />
+                  </label>
+                  <button className="menu-button" type="submit">
+                    <span>Upload selected PDF</span>
+                  </button>
+                </form>
+              </div>
+            </details>
+          ) : null}
+          {library.canEdit ? (
+            <details className="menu">
+              <summary className="button button-ghost">•••</summary>
+              <div className="menu-popover menu-popover-wide">
+                <form action={rebuildAction}>
+                  <button className="menu-button" type="submit">
+                    <span>Refresh index</span>
+                  </button>
+                </form>
+                <Link className="menu-link" href={`/library/${libraryId}`}>
+                  <span>Reset view</span>
+                </Link>
+              </div>
+            </details>
+          ) : (
             <Link className="button button-ghost" href={`/library/${libraryId}`}>
-              Reset view
+              Reset
             </Link>
-            {library.webViewLink ? (
-              <a
-                className="button button-ghost"
-                href={library.webViewLink}
-                rel="noreferrer"
-                target="_blank"
-              >
-                Open root in Drive
-              </a>
+          )}
+        </div>
+      </section>
+
+      <section className="finder-layout">
+        <aside className="finder-sidebar">
+          <div className="pane-header finder-sidebar-header">
+            <div className="pane-title">
+              <strong>Folders</strong>
+              <span className="muted">Library contents only</span>
+            </div>
+            {library.canEdit ? (
+              <details className="menu">
+                <summary aria-label="Folder actions">+</summary>
+                <div className="menu-popover">
+                  <form action={rebuildAction}>
+                    <button className="menu-button" type="submit">
+                      <span>Refresh library index</span>
+                    </button>
+                  </form>
+                  <form action={createFolderAction}>
+                    <input name="parentFolderId" type="hidden" value={folderId} />
+                    <input name="name" type="hidden" value="New Folder" />
+                    <button className="menu-button" type="submit">
+                      <span>New folder here</span>
+                    </button>
+                  </form>
+                </div>
+              </details>
             ) : null}
           </div>
+          <FolderTree
+            currentFolderId={folderId}
+            folders={index.folders}
+            libraryId={libraryId}
+          />
+        </aside>
+
+        <section className="finder-main">
+          <div className="finder-section-head">
+            <div className="title-cluster">
+              <p className="eyebrow">Collection</p>
+              <h2>{selectedFolder?.name ?? "All Papers"}</h2>
+            </div>
+          </div>
+          <PaperTable
+            canEdit={library.canEdit}
+            libraryId={libraryId}
+            papers={visiblePapers}
+            selectedPaperId={selectedPaper?.driveFileId}
+          />
         </section>
 
-        <section className="split-library">
-          <aside className="pane">
-            <div className="pane-header">
-              <div className="pane-title">
-                <strong>Folders</strong>
-                <span className="muted">Browse by hierarchy</span>
-              </div>
-            </div>
-            <FolderTree
-              currentFolderId={folderId}
-              folders={index.folders}
-              libraryId={libraryId}
-            />
-          </aside>
-
-          <section className="stack-sm">
-            <PaperTable
-              canEdit={library.canEdit}
-              libraryId={libraryId}
-              papers={visiblePapers}
-              selectedPaperId={selectedPaper?.driveFileId}
-            />
-          </section>
-
-          <aside className="pane">
-            {selectedPaper ? (
-              <div className="inspector-card">
-                <div className="pane-header">
-                  <div className="pane-title">
-                    <strong>{selectedPaper.title}</strong>
-                    <span className="muted">{selectedPaper.fileName}</span>
-                  </div>
+        <aside className="finder-preview">
+          {selectedPaper ? (
+            <div className="preview-shell">
+              <div className="preview-header">
+                <div className="preview-title">
+                  <strong>{selectedPaper.title}</strong>
+                  <span>{selectedPaper.fileName}</span>
                 </div>
-
-                <div className="info-grid">
-                  <div className="info-row">
-                    <label>Path</label>
-                    <span>{selectedPaper.path}</span>
-                  </div>
-                  <div className="info-row">
-                    <label>Drive file ID</label>
-                    <span>{selectedPaper.driveFileId}</span>
-                  </div>
-                  <div className="info-row">
-                    <label>Folder</label>
-                    <span>{selectedFolder?.name ?? "Library root"}</span>
-                  </div>
-                  <div className="info-row">
-                    <label>Modified</label>
-                    <span>
-                      {selectedPaper.modifiedTime
-                        ? new Date(selectedPaper.modifiedTime).toLocaleString()
-                        : "Unknown"}
-                    </span>
-                  </div>
-                </div>
-
-                <div className="inspector-actions">
+                <div className="mini-actions">
                   <Link
-                    className="button"
+                    className="button button-secondary"
                     href={`/library/${libraryId}/paper/${selectedPaper.driveFileId}`}
                   >
-                    Open preview
+                    Open
                   </Link>
                   {selectedPaper.webViewLink ? (
                     <a
-                      className="button button-secondary"
+                      className="button button-ghost"
                       href={selectedPaper.webViewLink}
                       rel="noreferrer"
                       target="_blank"
@@ -314,18 +350,22 @@ export default async function LibraryPage({
                     </a>
                   ) : null}
                 </div>
+              </div>
 
-                {library.canEdit ? (
-                  <>
-                    <div className="quiet-divider" />
-                    <form action={updatePaperAction} className="subtle-form">
-                      <div className="title-cluster">
-                        <p className="eyebrow">Rename or move</p>
-                        <h2>File actions</h2>
-                      </div>
+              <iframe
+                className="preview-frame"
+                src={previewUrlForPaper(selectedPaper.driveFileId)}
+                title={selectedPaper.title}
+              />
+
+              {library.canEdit ? (
+                <details className="menu preview-actions">
+                  <summary className="button button-ghost">File options</summary>
+                  <div className="menu-popover menu-popover-wide">
+                    <form action={updatePaperAction} className="stack-sm">
                       <input name="driveFileId" type="hidden" value={selectedPaper.driveFileId} />
                       <div className="field">
-                        <label htmlFor="fileName">New filename</label>
+                        <label htmlFor="fileName">File name</label>
                         <input
                           defaultValue={selectedPaper.fileName}
                           id="fileName"
@@ -333,65 +373,40 @@ export default async function LibraryPage({
                         />
                       </div>
                       <div className="field">
-                        <label htmlFor="newParentFolderId">New parent folder ID</label>
-                        <input id="newParentFolderId" name="newParentFolderId" />
+                        <label htmlFor="newParentFolderId">Move to folder</label>
+                        <select
+                          defaultValue={selectedPaper.driveFolderId}
+                          id="newParentFolderId"
+                          name="newParentFolderId"
+                        >
+                          {folderOptions.map((folder) => (
+                            <option key={folder.value} value={folder.value}>
+                              {folder.label}
+                            </option>
+                          ))}
+                        </select>
                       </div>
                       <button className="button button-secondary" type="submit">
                         Save changes
                       </button>
                     </form>
-
-                    <form action={trashPaperAction} className="subtle-form">
+                    <form action={trashPaperAction}>
                       <input name="driveFileId" type="hidden" value={selectedPaper.driveFileId} />
-                      <button className="button button-danger" type="submit">
-                        Move to trash
+                      <button className="menu-button danger" type="submit">
+                        <span>Move to trash</span>
                       </button>
                     </form>
-                  </>
-                ) : null}
-              </div>
-            ) : (
-              <div className="inspector-empty">
-                <div className="pane-title">
-                  <strong>Inspector</strong>
-                  <span className="muted">Select a paper from the center list.</span>
-                </div>
-              </div>
-            )}
-
-            {library.canEdit ? (
-              <>
-                <div className="quiet-divider" />
-                <form action={createFolderAction} className="subtle-form">
-                  <div className="title-cluster">
-                    <p className="eyebrow">Selected folder</p>
-                    <h2>{selectedFolder?.name ?? "Library root"}</h2>
-                    <p>Create folders or upload PDFs into the current location.</p>
                   </div>
-                  <input name="parentFolderId" type="hidden" value={folderId} />
-                  <div className="field">
-                    <label htmlFor="name">New folder name</label>
-                    <input id="name" name="name" required />
-                  </div>
-                  <button className="button button-secondary" type="submit">
-                    Create folder
-                  </button>
-                </form>
-
-                <form action={uploadAction} className="subtle-form">
-                  <input name="parentFolderId" type="hidden" value={folderId} />
-                  <div className="field">
-                    <label htmlFor="file">Upload PDF</label>
-                    <input accept=".pdf,application/pdf" id="file" name="file" required type="file" />
-                  </div>
-                  <button className="button button-secondary" type="submit">
-                    Upload into folder
-                  </button>
-                </form>
-              </>
-            ) : null}
-          </aside>
-        </section>
+                </details>
+              ) : null}
+            </div>
+          ) : (
+            <div className="preview-empty">
+              <strong>Preview</strong>
+              <span className="muted">Select a paper from the list to preview it here.</span>
+            </div>
+          )}
+        </aside>
       </section>
     </main>
   );

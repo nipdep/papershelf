@@ -28,12 +28,12 @@ export default async function RootLayout({
                 <span className="brand-mark">PS</span>
                 <span className="brand-copy">
                   <strong>Papershelf</strong>
-                  <span>Drive-native paper workspace</span>
+                  <span>Drive-native paper library</span>
                 </span>
               </Link>
               <form action="/" className="header-search" method="get">
                 <span className="header-search-icon">⌘K</span>
-                <input name="q" placeholder="Global search libraries or jump back to workspace" />
+                <input name="q" placeholder="Search libraries and papers" />
               </form>
               <div className="header-right">
                 {session?.user?.email ? (
