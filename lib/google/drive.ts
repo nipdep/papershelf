@@ -22,6 +22,60 @@ const DRIVE_FIELDS = [
 
 const APP_DATA_CONFIG_NAME = "papershelf-config.json";
 
+function getDriveErrorStatus(error: unknown): number | undefined {
+  if (
+    typeof error === "object" &&
+    error !== null &&
+    "status" in error &&
+    typeof error.status === "number"
+  ) {
+    return error.status;
+  }
+
+  if (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    typeof error.code === "number"
+  ) {
+    return error.code;
+  }
+
+  if (
+    typeof error === "object" &&
+    error !== null &&
+    "response" in error &&
+    typeof error.response === "object" &&
+    error.response !== null &&
+    "status" in error.response &&
+    typeof error.response.status === "number"
+  ) {
+    return error.response.status;
+  }
+
+  return undefined;
+}
+
+function toAuthenticationError(error: unknown): AppError | null {
+  const status = getDriveErrorStatus(error);
+  if (status === 401) {
+    return new AppError(
+      "NOT_AUTHENTICATED",
+      "Your Google session expired or was revoked. Please sign in again.",
+      401
+    );
+  }
+
+  return null;
+}
+
+function toDriveNotFoundError(error: unknown): AppError {
+  return (
+    toAuthenticationError(error) ??
+    new AppError("DRIVE_NOT_FOUND", "Drive item not found.", 404)
+  );
+}
+
 export interface DriveClient {
   getFileMetadata(fileId: string): Promise<DriveItem>;
   listFolderChildren(
@@ -157,8 +211,8 @@ export async function getDriveClientForSession(session: Session): Promise<DriveC
         supportsAllDrives: true
       });
       return mapDriveFile(response.data);
-    } catch {
-      throw new AppError("DRIVE_NOT_FOUND", "Drive item not found.", 404);
+    } catch (error) {
+      throw toDriveNotFoundError(error);
     }
   };
 
@@ -166,15 +220,20 @@ export async function getDriveClientForSession(session: Session): Promise<DriveC
     getFileMetadata: getMetadata,
 
     async listFolderChildren(folderId, pageToken) {
-      const response = await drive.files.list({
-        q: `'${folderId}' in parents and trashed = false`,
-        pageToken,
-        pageSize: 100,
-        fields: `nextPageToken,files(${DRIVE_FIELDS})`,
-        orderBy: "folder,name",
-        supportsAllDrives: true,
-        includeItemsFromAllDrives: true
-      });
+      let response;
+      try {
+        response = await drive.files.list({
+          q: `'${folderId}' in parents and trashed = false`,
+          pageToken,
+          pageSize: 100,
+          fields: `nextPageToken,files(${DRIVE_FIELDS})`,
+          orderBy: "folder,name",
+          supportsAllDrives: true,
+          includeItemsFromAllDrives: true
+        });
+      } catch (error) {
+        throw toAuthenticationError(error) ?? error;
+      }
 
       return {
         items: (response.data.files ?? []).map(mapDriveFile),
@@ -238,20 +297,30 @@ export async function getDriveClientForSession(session: Session): Promise<DriveC
     },
 
     async readAppConfig() {
-      const existing = await getAppConfigFile(drive);
+      let existing: DriveItem | null;
+      try {
+        existing = await getAppConfigFile(drive);
+      } catch (error) {
+        throw toAuthenticationError(error) ?? error;
+      }
       if (!existing) {
         return null;
       }
 
-      const response = await drive.files.get(
-        {
-          fileId: existing.id,
-          alt: "media"
-        },
-        {
-          responseType: "text"
-        }
-      );
+      let response;
+      try {
+        response = await drive.files.get(
+          {
+            fileId: existing.id,
+            alt: "media"
+          },
+          {
+            responseType: "text"
+          }
+        );
+      } catch (error) {
+        throw toAuthenticationError(error) ?? error;
+      }
 
       return String(response.data);
     },

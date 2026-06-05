@@ -8,6 +8,18 @@ describe("authz helpers", () => {
     expect(() => requireSession(null)).toThrow(AppError);
   });
 
+  it("rejects stale Google sessions", () => {
+    expect(() =>
+      requireSession({
+        user: {
+          email: "user@example.com",
+          isOwner: true,
+          authError: "RefreshAccessTokenError"
+        }
+      } as any)
+    ).toThrow(AppError);
+  });
+
   it("requires owner role", () => {
     expect(() =>
       requireOwner({

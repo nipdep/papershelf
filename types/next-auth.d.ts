@@ -7,6 +7,7 @@ declare module "next-auth" {
       email: string;
       isOwner: boolean;
       accessToken?: string;
+      authError?: "RefreshAccessTokenError";
     };
   }
 }
@@ -14,6 +15,9 @@ declare module "next-auth" {
 declare module "next-auth/jwt" {
   interface JWT {
     accessToken?: string;
+    accessTokenExpiresAt?: number;
+    refreshToken?: string;
+    authError?: "RefreshAccessTokenError";
     isOwner?: boolean;
   }
 }

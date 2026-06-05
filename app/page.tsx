@@ -66,6 +66,26 @@ export default async function HomePage({
     );
   }
 
+  if (session.user.authError) {
+    return (
+      <main className="workspace hero-center">
+        <section className="card hero-panel glass-card stack">
+          <div className="title-cluster">
+            <p className="eyebrow">Session expired</p>
+            <h1>Your Google connection needs to be refreshed.</h1>
+            <p>
+              The saved Google session is no longer valid, so Papershelf cannot read
+              your Drive libraries until you sign in again.
+            </p>
+          </div>
+          <div className="hero-actions">
+            <SignInButton />
+          </div>
+        </section>
+      </main>
+    );
+  }
+
   const libraries = await listLibrariesForSession(session);
   const accessibleLibraries = libraries
     .filter((library) => library.accessible)

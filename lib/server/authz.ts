@@ -7,6 +7,14 @@ export function requireSession(session: Session | null) {
     throw new AppError("NOT_AUTHENTICATED", "You must sign in first.", 401);
   }
 
+  if (session.user.authError) {
+    throw new AppError(
+      "NOT_AUTHENTICATED",
+      "Your Google session expired or was revoked. Please sign in again.",
+      401
+    );
+  }
+
   return session;
 }
 
