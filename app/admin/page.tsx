@@ -3,6 +3,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
 import { auth } from "@/auth";
+import { asAppError } from "@/lib/errors";
 import {
   addLibraryForOwner,
   listLibrariesForSession,
@@ -12,8 +13,27 @@ import {
 import { requireOwner } from "@/lib/server/authz";
 
 export default async function AdminPage() {
-  const session = requireOwner(await auth());
-  const libraries = await listLibrariesForSession(session);
+  let session;
+  try {
+    session = requireOwner(await auth());
+  } catch (error) {
+    const appError = asAppError(error);
+    if (appError.code === "NOT_AUTHENTICATED") {
+      redirect("/");
+    }
+    throw appError;
+  }
+
+  let libraries;
+  try {
+    libraries = await listLibrariesForSession(session);
+  } catch (error) {
+    const appError = asAppError(error);
+    if (appError.code === "NOT_AUTHENTICATED") {
+      redirect("/");
+    }
+    throw appError;
+  }
 
   async function addLibraryAction(formData: FormData) {
     "use server";

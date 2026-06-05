@@ -1,11 +1,11 @@
 import Link from "next/link";
 import { revalidatePath } from "next/cache";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 
 import { auth } from "@/auth";
 import { FolderTree } from "@/components/folder-tree";
 import { PaperTable } from "@/components/paper-table";
-import { AppError } from "@/lib/errors";
+import { asAppError } from "@/lib/errors";
 import {
   createSubfolder,
   getLibraryIndex,
@@ -28,11 +28,29 @@ export default async function LibraryPage({
   params: Promise<{ libraryId: string }>;
   searchParams: Promise<{ folder?: string; q?: string; paper?: string }>;
 }) {
-  const session = requireSession(await auth());
+  let session;
+  try {
+    session = requireSession(await auth());
+  } catch (error) {
+    const appError = asAppError(error);
+    if (appError.code === "NOT_AUTHENTICATED") {
+      redirect("/");
+    }
+    throw appError;
+  }
   const { libraryId } = await params;
   const filters = await searchParams;
 
-  const libraries = await listLibrariesForSession(session);
+  let libraries;
+  try {
+    libraries = await listLibrariesForSession(session);
+  } catch (error) {
+    const appError = asAppError(error);
+    if (appError.code === "NOT_AUTHENTICATED") {
+      redirect("/");
+    }
+    throw appError;
+  }
   const library = libraries.find((entry) => entry.driveFolderId === libraryId);
   if (!library?.accessible) {
     notFound();
@@ -106,7 +124,11 @@ export default async function LibraryPage({
   try {
     index = await getLibraryIndex(session, libraryId);
   } catch (error) {
-    if (error instanceof AppError && error.code === "INDEX_NOT_FOUND") {
+    const appError = asAppError(error);
+    if (appError.code === "NOT_AUTHENTICATED") {
+      redirect("/");
+    }
+    if (appError.code === "INDEX_NOT_FOUND") {
       return (
         <main className="workspace">
             <header className="page-header">
@@ -165,7 +187,7 @@ export default async function LibraryPage({
       );
     }
 
-    throw error;
+    throw appError;
   }
 
   const selectedFolder =

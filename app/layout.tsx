@@ -3,6 +3,7 @@ import { ReactNode } from "react";
 
 import { auth } from "@/auth";
 import { SignOutButton } from "@/components/auth-buttons";
+import { asAppError } from "@/lib/errors";
 
 import "./globals.css";
 
@@ -16,7 +17,15 @@ export default async function RootLayout({
 }: Readonly<{
   children: ReactNode;
 }>) {
-  const session = await auth();
+  let session = null;
+  try {
+    session = await auth();
+  } catch (error) {
+    const appError = asAppError(error);
+    if (appError.code !== "NOT_AUTHENTICATED") {
+      throw appError;
+    }
+  }
 
   return (
     <html lang="en">
