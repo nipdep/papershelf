@@ -1,4 +1,7 @@
-import initSqlJs, { Database, QueryExecResult, SqlJsStatic } from "sql.js/dist/sql-asm.js";
+import path from "node:path";
+
+import initSqlJs from "sql.js";
+import type { Database, QueryExecResult, SqlJsStatic } from "sql.js";
 
 import { AppError } from "@/lib/errors";
 import { IndexedFolder, IndexedPaper, LibraryIndexData, SearchResult } from "@/lib/models";
@@ -7,10 +10,16 @@ type SqlValue = string | number | null;
 type SqlRow = Record<string, SqlValue>;
 
 let sqlJsPromise: Promise<SqlJsStatic> | undefined;
+const sqlWasmPath = path.join(process.cwd(), "node_modules/sql.js/dist/sql-wasm.wasm");
 
 async function getSqlJs() {
   if (!sqlJsPromise) {
-    sqlJsPromise = initSqlJs();
+    sqlJsPromise = initSqlJs({
+      // Keep wasm loading on the supported entrypoint instead of the raw asm bundle.
+      locateFile(file) {
+        return file === "sql-wasm.wasm" ? sqlWasmPath : file;
+      }
+    });
   }
 
   return sqlJsPromise;

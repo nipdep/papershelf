@@ -4,6 +4,7 @@ import { ReactNode } from "react";
 
 import { auth } from "@/auth";
 import { SignOutButton } from "@/components/auth-buttons";
+import { HeaderSearch } from "@/components/header-search";
 import { asAppError } from "@/lib/errors";
 
 import "./globals.css";
@@ -42,10 +43,7 @@ export default async function RootLayout({
                   <span>Drive-native paper library</span>
                 </span>
               </Link>
-              <form action="/" className="header-search" method="get">
-                <span className="header-search-icon">⌘K</span>
-                <input name="q" placeholder="Search libraries and papers" />
-              </form>
+              <HeaderSearch />
               <div className="header-right">
                 {session?.user?.email ? (
                   <>
@@ -54,8 +52,18 @@ export default async function RootLayout({
                       {session.user.isOwner ? " · owner" : ""}
                     </span>
                     {session.user.isOwner ? (
-                      <Link className="shell-link" href="/admin">
-                        Settings
+                      <Link
+                        aria-label="Settings"
+                        className="shell-icon-button"
+                        href="/admin"
+                        title="Settings"
+                      >
+                        <svg aria-hidden="true" viewBox="0 0 24 24">
+                          <path
+                            d="M19.14 12.94a7.96 7.96 0 0 0 .06-.94 7.96 7.96 0 0 0-.06-.94l2.03-1.58-1.92-3.32-2.39.96a7.28 7.28 0 0 0-1.63-.94L14.96 2h-3.92l-.27 2.18c-.58.22-1.12.53-1.63.94l-2.39-.96-1.92 3.32 2.03 1.58a7.96 7.96 0 0 0-.06.94c0 .32.02.63.06.94l-2.03 1.58 1.92 3.32 2.39-.96c.5.4 1.05.72 1.63.94l.27 2.18h3.92l.27-2.18c.58-.22 1.13-.54 1.63-.94l2.39.96 1.92-3.32-2.03-1.58ZM13 15.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7Z"
+                            fill="currentColor"
+                          />
+                        </svg>
                       </Link>
                     ) : null}
                     <SignOutButton />

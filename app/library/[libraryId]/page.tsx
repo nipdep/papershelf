@@ -9,8 +9,8 @@ import { PaperTable } from "@/components/paper-table";
 import { asAppError } from "@/lib/errors";
 import {
   createSubfolder,
+  getLibrarySummaryForSession,
   getLibraryIndex,
-  listLibrariesForSession,
   rebuildLibraryIndex,
   trashPaperInLibrary,
   updatePaperMetadata,
@@ -43,9 +43,9 @@ export default async function LibraryPage({
   const { libraryId } = await params;
   const filters = await searchParams;
 
-  let libraries;
+  let library;
   try {
-    libraries = await listLibrariesForSession(session);
+    library = await getLibrarySummaryForSession(session, libraryId);
   } catch (error) {
     unstable_rethrow(error);
     const appError = asAppError(error);
@@ -54,7 +54,6 @@ export default async function LibraryPage({
     }
     throw appError;
   }
-  const library = libraries.find((entry) => entry.driveFolderId === libraryId);
   if (!library?.accessible) {
     notFound();
   }
@@ -197,8 +196,20 @@ export default async function LibraryPage({
   const selectedFolder =
     index.folders.find((folder) => folder.driveFolderId === folderId) ?? index.folders[0];
 
+  const visibleFolderIds = new Set(
+    selectedFolder
+      ? index.folders
+          .filter(
+            (folder) =>
+              folder.path === selectedFolder.path ||
+              folder.path.startsWith(`${selectedFolder.path}/`)
+          )
+          .map((folder) => folder.driveFolderId)
+      : index.folders.map((folder) => folder.driveFolderId)
+  );
+
   const visiblePapers = index.papers.filter((paper) => {
-    const matchesFolder = folderId ? paper.driveFolderId === folderId : true;
+    const matchesFolder = visibleFolderIds.has(paper.driveFolderId);
     const matchesQuery = query
       ? [paper.title, paper.fileName, paper.path]
           .join(" ")
@@ -215,123 +226,83 @@ export default async function LibraryPage({
 
   const folderOptions = index.folders.map((folder) => ({
     value: folder.driveFolderId,
-    label: folder.depth === 0 ? "All Papers" : `${"  ".repeat(folder.depth)}${folder.name}`
+    label: folder.depth === 0 ? library.name : `${"  ".repeat(folder.depth)}${folder.name}`
   }));
+  const rootFolder = index.folders.find((folder) => folder.parentFolderId === null);
 
   return (
     <main className="workspace workspace-finder">
-      <section className="finder-topbar">
-        <div className="finder-location">
-          <div className="title-cluster">
-            <p className="eyebrow">Library</p>
-            <h1>{library.name}</h1>
-            <p>
-              {selectedFolder?.name ?? "All Papers"} · {visiblePapers.length} paper
-              {visiblePapers.length === 1 ? "" : "s"}
-            </p>
-          </div>
-        </div>
-
-        <form className="toolbar-search finder-toolbar-search" method="get">
-          <input name="folder" type="hidden" value={folderId} />
-          {selectedPaper ? (
-            <input name="paper" type="hidden" value={selectedPaper.driveFileId} />
-          ) : null}
-          <span className="muted">Search</span>
-          <input defaultValue={query} name="q" placeholder="Search papers in this folder" />
-        </form>
-
-        <div className="mini-actions finder-topbar-actions">
-          <Link className="button button-ghost" href="/">
-            Libraries
-          </Link>
-          {library.webViewLink ? (
-            <a
-              className="button button-ghost"
-              href={library.webViewLink}
-              rel="noreferrer"
-              target="_blank"
-            >
-              Drive
-            </a>
-          ) : null}
-          {library.canEdit ? (
-            <details className="menu">
-              <summary className="button button-secondary">New</summary>
-              <div className="menu-popover menu-popover-wide">
-                <form action={createFolderAction}>
-                  <input name="parentFolderId" type="hidden" value={folderId} />
-                  <input name="name" type="hidden" value="New Folder" />
-                  <button className="menu-button" type="submit">
-                    <span>New folder in current location</span>
-                  </button>
-                </form>
-                <form action={uploadAction}>
-                  <input name="parentFolderId" type="hidden" value={folderId} />
-                  <label className="menu-file-picker">
-                    <span>Upload PDF to current folder</span>
-                    <input accept=".pdf,application/pdf" name="file" required type="file" />
-                  </label>
-                  <button className="menu-button" type="submit">
-                    <span>Upload selected PDF</span>
-                  </button>
-                </form>
-              </div>
-            </details>
-          ) : null}
-          {library.canEdit ? (
-            <details className="menu">
-              <summary className="button button-ghost">•••</summary>
-              <div className="menu-popover menu-popover-wide">
-                <form action={rebuildAction}>
-                  <button className="menu-button" type="submit">
-                    <span>Refresh index</span>
-                  </button>
-                </form>
-                <Link className="menu-link" href={`/library/${libraryId}`}>
-                  <span>Reset view</span>
-                </Link>
-              </div>
-            </details>
-          ) : (
-            <Link className="button button-ghost" href={`/library/${libraryId}`}>
-              Reset
-            </Link>
-          )}
-        </div>
-      </section>
-
       <section className="finder-layout">
         <aside className="finder-sidebar">
           <div className="pane-header finder-sidebar-header">
-            <div className="pane-title">
-              <strong>Folders</strong>
-              <span className="muted">Library contents only</span>
+            <div className="finder-root-row">
+              {library.canEdit ? (
+                <details className="menu">
+                  <summary aria-label="Library actions" title="Library actions">
+                    +
+                  </summary>
+                  <div className="menu-popover menu-popover-wide">
+                    <form action={createFolderAction}>
+                      <input name="parentFolderId" type="hidden" value={folderId} />
+                      <input name="name" type="hidden" value="New Folder" />
+                      <button className="menu-button" type="submit">
+                        <span>New folder here</span>
+                      </button>
+                    </form>
+                    <form action={uploadAction}>
+                      <input name="parentFolderId" type="hidden" value={folderId} />
+                      <label className="menu-file-picker">
+                        <span>Upload PDF to current folder</span>
+                        <input accept=".pdf,application/pdf" name="file" required type="file" />
+                      </label>
+                      <button className="menu-button" type="submit">
+                        <span>Upload selected PDF</span>
+                      </button>
+                    </form>
+                    <form action={rebuildAction}>
+                      <button className="menu-button" type="submit">
+                        <span>Refresh library index</span>
+                      </button>
+                    </form>
+                    <Link className="menu-link" href="/">
+                      <span>Back to libraries</span>
+                    </Link>
+                    {library.webViewLink ? (
+                      <a
+                        className="menu-link"
+                        href={library.webViewLink}
+                        rel="noreferrer"
+                        target="_blank"
+                      >
+                        <span>Open in Drive</span>
+                      </a>
+                    ) : null}
+                  </div>
+                </details>
+              ) : null}
+              <Link
+                className={`tree-link tree-link-root ${folderId === libraryId ? "active" : ""}`}
+                href={`/library/${libraryId}${query ? `?q=${encodeURIComponent(query)}` : ""}`}
+              >
+                <span className="tree-label">
+                  <span className="tree-icon">▣</span>
+                  <span>{rootFolder?.name ?? library.name}</span>
+                </span>
+              </Link>
             </div>
-            {library.canEdit ? (
-              <details className="menu">
-                <summary aria-label="Folder actions">+</summary>
-                <div className="menu-popover">
-                  <form action={rebuildAction}>
-                    <button className="menu-button" type="submit">
-                      <span>Refresh library index</span>
-                    </button>
-                  </form>
-                  <form action={createFolderAction}>
-                    <input name="parentFolderId" type="hidden" value={folderId} />
-                    <input name="name" type="hidden" value="New Folder" />
-                    <button className="menu-button" type="submit">
-                      <span>New folder here</span>
-                    </button>
-                  </form>
-                </div>
-              </details>
-            ) : null}
+            <div className="pane-title">
+              <strong>{library.name}</strong>
+              <span className="muted">
+                {selectedFolder?.name ?? library.name} · {visiblePapers.length} paper
+                {visiblePapers.length === 1 ? "" : "s"}
+              </span>
+            </div>
           </div>
           <FolderTree
             currentFolderId={folderId}
             folders={index.folders}
             libraryId={libraryId}
+            query={query}
           />
         </aside>
 
@@ -339,13 +310,19 @@ export default async function LibraryPage({
           <div className="finder-section-head">
             <div className="title-cluster">
               <p className="eyebrow">Collection</p>
-              <h2>{selectedFolder?.name ?? "All Papers"}</h2>
+              <h2>{selectedFolder?.name ?? library.name}</h2>
+              <p>
+                Showing papers inside this folder and all nested folders.
+                {query ? ` Filtered by "${query}".` : ""}
+              </p>
             </div>
           </div>
           <PaperTable
             canEdit={library.canEdit}
+            currentFolderId={folderId}
             libraryId={libraryId}
             papers={visiblePapers}
+            query={query}
             selectedPaperId={selectedPaper?.driveFileId}
           />
         </section>

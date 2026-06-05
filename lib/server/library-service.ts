@@ -18,53 +18,62 @@ export async function createSessionDriveClient(session: Session): Promise<DriveC
   return getDriveClientForSession(session);
 }
 
+async function summarizeLibrary(
+  driveClient: DriveClient,
+  library: LibraryConfig["libraries"][number]
+): Promise<LibrarySummary> {
+  try {
+    const [metadata, indexFile] = await Promise.all([
+      driveClient.getFileMetadata(library.driveFolderId),
+      driveClient.getIndexFileMetadata(library.driveFolderId)
+    ]);
+
+    return {
+      id: library.id,
+      name: library.displayName ?? metadata.name,
+      driveFolderId: library.driveFolderId,
+      accessible: true,
+      canEdit: canEditFromCapabilities(metadata.capabilities),
+      canAddChildren: Boolean(metadata.capabilities?.canAddChildren),
+      webViewLink: metadata.webViewLink,
+      indexStatus: indexFile ? "ok" : "missing",
+      generatedAt: indexFile?.modifiedTime
+    };
+  } catch {
+    return {
+      id: library.id,
+      name: library.displayName ?? library.driveFolderId,
+      driveFolderId: library.driveFolderId,
+      accessible: false,
+      canEdit: false,
+      canAddChildren: false,
+      indexStatus: "error" as const
+    };
+  }
+}
+
 export async function listLibrariesForSession(session: Session): Promise<LibrarySummary[]> {
   const driveClient = await createSessionDriveClient(session);
   const config = await loadLibraryConfig(driveClient);
 
-  const summaries = await Promise.all(
-    config.libraries.map(async (library) => {
-      try {
-        const metadata = await driveClient.getFileMetadata(library.driveFolderId);
-        let generatedAt: string | undefined;
-        let indexStatus: LibrarySummary["indexStatus"] = "missing";
-        try {
-          const bytes = await driveClient.downloadIndexSqlite(library.driveFolderId);
-          if (bytes) {
-            const parsed = await parseIndexSqlite(bytes);
-            generatedAt = parsed.generatedAt;
-            indexStatus = "ok";
-          }
-        } catch {
-          indexStatus = "error";
-        }
-
-        return {
-          id: library.id,
-          name: library.displayName ?? metadata.name,
-          driveFolderId: library.driveFolderId,
-          accessible: true,
-          canEdit: canEditFromCapabilities(metadata.capabilities),
-          canAddChildren: Boolean(metadata.capabilities?.canAddChildren),
-          webViewLink: metadata.webViewLink,
-          indexStatus,
-          generatedAt
-        };
-      } catch {
-        return {
-          id: library.id,
-          name: library.displayName ?? library.driveFolderId,
-          driveFolderId: library.driveFolderId,
-          accessible: false,
-          canEdit: false,
-          canAddChildren: false,
-          indexStatus: "error" as const
-        };
-      }
-    })
-  );
+  const summaries = await Promise.all(config.libraries.map((library) => summarizeLibrary(driveClient, library)));
 
   return summaries;
+}
+
+export async function getLibrarySummaryForSession(
+  session: Session,
+  libraryId: string
+): Promise<LibrarySummary | null> {
+  const driveClient = await createSessionDriveClient(session);
+  const config = await loadLibraryConfig(driveClient);
+  const library = config.libraries.find((entry) => entry.driveFolderId === libraryId);
+
+  if (!library) {
+    return null;
+  }
+
+  return summarizeLibrary(driveClient, library);
 }
 
 export async function addLibraryForOwner(

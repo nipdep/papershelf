@@ -7,12 +7,16 @@ export function PaperTable({
   papers,
   canEdit,
   libraryId,
-  selectedPaperId
+  selectedPaperId,
+  currentFolderId,
+  query
 }: {
   papers: IndexedPaper[];
   canEdit: boolean;
   libraryId: string;
   selectedPaperId?: string;
+  currentFolderId?: string;
+  query?: string;
 }) {
   if (papers.length === 0) {
     return (
@@ -38,7 +42,9 @@ export function PaperTable({
         </thead>
         <tbody>
           {papers.map((paper) => {
-            const itemHref = `/library/${libraryId}?folder=${paper.driveFolderId}&paper=${paper.driveFileId}`;
+            const itemHref = `/library/${libraryId}?folder=${
+              currentFolderId ?? paper.driveFolderId
+            }&paper=${paper.driveFileId}${query ? `&q=${encodeURIComponent(query)}` : ""}`;
             return (
               <tr
                 className={`finder-row ${

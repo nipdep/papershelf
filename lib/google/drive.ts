@@ -78,6 +78,7 @@ function toDriveNotFoundError(error: unknown): AppError {
 
 export interface DriveClient {
   getFileMetadata(fileId: string): Promise<DriveItem>;
+  getIndexFileMetadata(rootFolderId: string): Promise<DriveItem | null>;
   listFolderChildren(
     folderId: string,
     pageToken?: string
@@ -171,6 +172,13 @@ async function getOrCreatePaperManagerFolder(
   return mapDriveFile(created.data);
 }
 
+async function getPaperManagerFolder(
+  drive: drive_v3.Drive,
+  rootFolderId: string
+): Promise<DriveItem | null> {
+  return findChildByName(drive, rootFolderId, ".paper-manager");
+}
+
 async function findIndexFile(
   drive: drive_v3.Drive,
   paperManagerFolderId: string
@@ -218,6 +226,15 @@ export async function getDriveClientForSession(session: Session): Promise<DriveC
 
   return {
     getFileMetadata: getMetadata,
+
+    async getIndexFileMetadata(rootFolderId) {
+      const folder = await getPaperManagerFolder(drive, rootFolderId);
+      if (!folder) {
+        return null;
+      }
+
+      return findIndexFile(drive, folder.id);
+    },
 
     async listFolderChildren(folderId, pageToken) {
       let response;
