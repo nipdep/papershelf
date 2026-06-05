@@ -1,0 +1,33 @@
+{
+  "name": "papershelf",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "NEXT_SWC_PATH=$PWD/.cache/next-swc XDG_CACHE_HOME=$PWD/.cache NEXT_TEST_WASM_DIR=$PWD/node_modules/@next/swc-wasm-nodejs next dev",
+    "build": "NEXT_SWC_PATH=$PWD/.cache/next-swc XDG_CACHE_HOME=$PWD/.cache NEXT_TEST_WASM_DIR=$PWD/node_modules/@next/swc-wasm-nodejs next build",
+    "start": "next start",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "googleapis": "^144.0.0",
+    "next": "^15.0.0",
+    "next-auth": "^5.0.0-beta.25",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "sql.js": "^1.12.0",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@next/swc-wasm-nodejs": "15.5.19",
+    "@testing-library/jest-dom": "^6.6.3",
+    "@testing-library/react": "^16.0.1",
+    "@types/node": "^22.10.1",
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "jsdom": "^25.0.1",
+    "typescript": "^5.7.2",
+    "vite": "^4.5.5",
+    "vitest": "^0.34.6"
+  }
+}
