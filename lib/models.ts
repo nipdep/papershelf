@@ -48,6 +48,9 @@ export interface LibraryRecord {
   driveFolderId: string;
   displayName?: string;
   addedAt: string;
+  cachedPaperCount?: number;
+  cachedFolderCount?: number;
+  cachedGeneratedAt?: string;
 }
 
 export interface LibraryConfig {
@@ -66,6 +69,8 @@ export interface LibrarySummary {
   webViewLink?: string;
   indexStatus: "ok" | "missing" | "error";
   generatedAt?: string;
+  paperCount?: number;
+  folderCount?: number;
 }
 
 export interface LibraryIndexData {
@@ -75,3 +80,14 @@ export interface LibraryIndexData {
 }
 
 export interface SearchResult extends IndexedPaper {}
+
+export interface ExplorerFolder extends IndexedFolder {
+  libraryId: string;
+  libraryName: string;
+  libraryCanEdit: boolean;
+}
+
+export interface ExplorerPaper extends IndexedPaper {
+  libraryId: string;
+  libraryName: string;
+}

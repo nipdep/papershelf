@@ -92,6 +92,11 @@ export interface DriveClient {
   readAppConfig(): Promise<string | null>;
   writeAppConfig(json: string): Promise<void>;
   createFolder(parentFolderId: string, name: string): Promise<DriveItem>;
+  updateFolder(
+    driveFolderId: string,
+    updates: { name?: string; newParentFolderId?: string }
+  ): Promise<DriveItem>;
+  trashFolder(driveFolderId: string): Promise<void>;
   uploadPdf(
     parentFolderId: string,
     fileName: string,
@@ -380,6 +385,35 @@ export async function getDriveClientForSession(session: Session): Promise<DriveC
       });
 
       return mapDriveFile(response.data);
+    },
+
+    async updateFolder(driveFolderId, updates) {
+      const current = await getMetadata(driveFolderId);
+      const response = await drive.files.update({
+        fileId: driveFolderId,
+        requestBody: {
+          name: updates.name ?? current.name
+        },
+        addParents: updates.newParentFolderId,
+        removeParents:
+          updates.newParentFolderId && current.parents?.length
+            ? current.parents.join(",")
+            : undefined,
+        fields: DRIVE_FIELDS,
+        supportsAllDrives: true
+      });
+      return mapDriveFile(response.data);
+    },
+
+    async trashFolder(driveFolderId) {
+      await drive.files.update({
+        fileId: driveFolderId,
+        requestBody: {
+          trashed: true
+        },
+        fields: "id",
+        supportsAllDrives: true
+      });
     },
 
     async uploadPdf(parentFolderId, fileName, mimeType, bytes) {

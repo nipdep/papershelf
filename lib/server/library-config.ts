@@ -27,7 +27,12 @@ export function normalizeLibraryConfig(
 export function upsertLibraryRecord(
   config: LibraryConfig,
   library: Pick<LibraryRecord, "driveFolderId" | "displayName"> &
-    Partial<Pick<LibraryRecord, "id" | "addedAt">>
+    Partial<
+      Pick<
+        LibraryRecord,
+        "id" | "addedAt" | "cachedPaperCount" | "cachedFolderCount" | "cachedGeneratedAt"
+      >
+    >
 ): LibraryConfig {
   const existing = config.libraries.find(
     (entry) => entry.driveFolderId === library.driveFolderId
@@ -36,13 +41,19 @@ export function upsertLibraryRecord(
   const nextRecord: LibraryRecord = existing
     ? {
         ...existing,
-        displayName: library.displayName ?? existing.displayName
+        displayName: library.displayName ?? existing.displayName,
+        cachedPaperCount: library.cachedPaperCount ?? existing.cachedPaperCount,
+        cachedFolderCount: library.cachedFolderCount ?? existing.cachedFolderCount,
+        cachedGeneratedAt: library.cachedGeneratedAt ?? existing.cachedGeneratedAt
       }
     : {
         id: library.id ?? library.driveFolderId,
         driveFolderId: library.driveFolderId,
         displayName: library.displayName,
-        addedAt: library.addedAt ?? nowIso()
+        addedAt: library.addedAt ?? nowIso(),
+        cachedPaperCount: library.cachedPaperCount,
+        cachedFolderCount: library.cachedFolderCount,
+        cachedGeneratedAt: library.cachedGeneratedAt
       };
 
   const nextLibraries = existing

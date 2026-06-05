@@ -34,6 +34,26 @@ describe("library config", () => {
     expect(twice.libraries[0]?.displayName).toBe("Updated");
   });
 
+  it("preserves cached stats when updating a library", () => {
+    const once = upsertLibraryRecord(createEmptyLibraryConfig(), {
+      id: "lib-1",
+      driveFolderId: "folder-1",
+      displayName: "First",
+      cachedPaperCount: 12,
+      cachedFolderCount: 4,
+      cachedGeneratedAt: "2026-06-05T00:00:00.000Z"
+    });
+    const twice = upsertLibraryRecord(once, {
+      id: "lib-1",
+      driveFolderId: "folder-1",
+      displayName: "Updated"
+    });
+
+    expect(twice.libraries[0]?.cachedPaperCount).toBe(12);
+    expect(twice.libraries[0]?.cachedFolderCount).toBe(4);
+    expect(twice.libraries[0]?.cachedGeneratedAt).toBe("2026-06-05T00:00:00.000Z");
+  });
+
   it("removes libraries by id", () => {
     const config = upsertLibraryRecord(createEmptyLibraryConfig(), {
       id: "lib-1",

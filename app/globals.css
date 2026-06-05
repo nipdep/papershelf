@@ -9,8 +9,8 @@
   --text: #111827;
   --text-soft: #6b7280;
   --text-faint: #9ca3af;
-  --accent: #4f46e5;
-  --accent-strong: #3730a3;
+  --accent: #0ea5e9;
+  --accent-strong: #0369a1;
   --success: #047857;
   --danger: #b42318;
   --shadow-panel: 0 18px 48px rgba(15, 23, 42, 0.06);
@@ -109,11 +109,11 @@ code {
   border-radius: 11px;
   display: grid;
   place-items: center;
-  background: linear-gradient(135deg, var(--accent) 0%, #7c3aed 100%);
+  background: linear-gradient(135deg, var(--accent) 0%, #2563eb 100%);
   color: white;
   font-size: 0.82rem;
   font-weight: 700;
-  box-shadow: 0 12px 30px rgba(79, 70, 229, 0.25);
+  box-shadow: 0 12px 30px rgba(14, 165, 233, 0.25);
 }
 
 .brand-copy {
@@ -230,6 +230,20 @@ code {
 .shell-icon-button svg {
   width: 18px;
   height: 18px;
+}
+
+.view-mode-switcher {
+  position: relative;
+}
+
+.view-mode-popover {
+  min-width: 190px;
+}
+
+.menu-button.is-selected {
+  background: var(--bg-selected);
+  color: var(--accent-strong);
+  font-weight: 600;
 }
 
 .button {
@@ -545,6 +559,42 @@ code {
   gap: 6px;
 }
 
+.tree-root {
+  padding-left: 0;
+}
+
+.tree-node {
+  display: grid;
+  gap: 6px;
+}
+
+.tree-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.tree-toggle {
+  width: 22px;
+  height: 22px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text-faint);
+  cursor: pointer;
+}
+
+.tree-toggle:hover:enabled {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+
+.tree-toggle:disabled {
+  cursor: default;
+  opacity: 0.65;
+}
+
 .tree-link {
   display: inline-flex;
   width: 100%;
@@ -580,6 +630,36 @@ code {
 
 .tree-link-root {
   flex: 1;
+}
+
+.tree-context-menu {
+  position: relative;
+}
+
+.tree-context-menu summary,
+.tree-menu-trigger {
+  width: 28px;
+  height: 28px;
+  font-size: 0.82rem;
+}
+
+.tree-menu-popover {
+  min-width: 250px;
+}
+
+.tree-menu-popover-floating {
+  position: fixed;
+  right: auto;
+  top: 0;
+  z-index: 200;
+  width: min(280px, calc(100vw - 16px));
+  max-height: calc(100vh - 16px);
+  overflow: auto;
+}
+
+.tree-menu-popover-floating form {
+  display: grid;
+  gap: 10px;
 }
 
 .toolbar {
@@ -643,12 +723,26 @@ code {
   color: var(--text-soft);
 }
 
+.tree-menu-trigger {
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: white;
+  color: var(--text-soft);
+  flex: 0 0 auto;
+}
+
 .menu summary::-webkit-details-marker {
   display: none;
 }
 
 .menu[open] summary,
-.menu summary:hover {
+.menu summary:hover,
+.tree-menu-trigger:hover,
+.tree-menu-trigger[aria-expanded="true"] {
   background: var(--bg-hover);
   color: var(--text);
 }
@@ -783,6 +877,10 @@ code {
   min-height: calc(100vh - 80px);
 }
 
+.finder-layout-list {
+  grid-template-columns: 250px minmax(720px, 1fr);
+}
+
 .finder-sidebar {
   padding: 12px 10px 14px 14px;
   border-right: 1px solid var(--line);
@@ -817,6 +915,10 @@ code {
   align-items: center;
   gap: 8px;
   margin-bottom: 10px;
+}
+
+.compact-field {
+  gap: 4px;
 }
 
 .finder-section-head {
@@ -856,6 +958,7 @@ code {
   border-bottom: 1px solid var(--line);
   text-align: left;
   vertical-align: middle;
+  position: relative;
 }
 
 .finder-table th {
@@ -863,6 +966,34 @@ code {
   font-size: 0.78rem;
   font-weight: 600;
   color: var(--text-soft);
+}
+
+.table-sort-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+
+.table-sort-indicator {
+  color: var(--accent-strong);
+  font-size: 0.78rem;
+}
+
+.table-resizer {
+  position: absolute;
+  top: 0;
+  right: -4px;
+  width: 8px;
+  height: 100%;
+  cursor: col-resize;
+}
+
+.table-resizer:hover {
+  background: rgba(14, 165, 233, 0.16);
 }
 
 .finder-row {
@@ -895,6 +1026,11 @@ code {
   color: #c2410c;
   font-size: 0.72rem;
   font-weight: 700;
+}
+
+.finder-folder-icon {
+  background: #eef6ff;
+  color: #1d4ed8;
 }
 
 .finder-file-copy {
@@ -994,6 +1130,30 @@ code {
 
 .menu-file-picker input[type="file"] {
   font-size: 0.82rem;
+}
+
+.button-full {
+  width: 100%;
+}
+
+.radio-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.7);
+}
+
+.radio-card span {
+  display: grid;
+  gap: 4px;
+}
+
+.radio-card small {
+  color: var(--text-soft);
+  font-size: 0.8rem;
 }
 
 @media (max-width: 1240px) {

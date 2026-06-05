@@ -11,7 +11,13 @@ import {
 } from "@/lib/server/library-config";
 import { createIndexSqlite, parseIndexSqlite, searchIndexSqlite } from "@/lib/server/index-sqlite";
 import { scanDriveLibrary } from "@/lib/server/scan-drive-library";
-import { LibraryConfig, LibraryIndexData, LibrarySummary } from "@/lib/models";
+import {
+  ExplorerFolder,
+  ExplorerPaper,
+  LibraryConfig,
+  LibraryIndexData,
+  LibrarySummary
+} from "@/lib/models";
 import { parseDriveFolderInput } from "@/lib/utils/drive";
 
 export async function createSessionDriveClient(session: Session): Promise<DriveClient> {
@@ -37,7 +43,9 @@ async function summarizeLibrary(
       canAddChildren: Boolean(metadata.capabilities?.canAddChildren),
       webViewLink: metadata.webViewLink,
       indexStatus: indexFile ? "ok" : "missing",
-      generatedAt: indexFile?.modifiedTime
+      generatedAt: library.cachedGeneratedAt ?? indexFile?.modifiedTime,
+      paperCount: library.cachedPaperCount,
+      folderCount: library.cachedFolderCount
     };
   } catch {
     return {
@@ -122,13 +130,24 @@ export async function rebuildLibraryIndex(session: Session, libraryId: string) {
   const scanResult = await scanDriveLibrary(driveClient, libraryId);
   const bytes = await createIndexSqlite(scanResult);
   const upload = await driveClient.uploadOrUpdateIndexSqlite(libraryId, bytes);
+  const generatedAt = new Date().toISOString();
+  const config = await loadLibraryConfig(driveClient);
+  const nextConfig = upsertLibraryRecord(config, {
+    id: libraryId,
+    driveFolderId: libraryId,
+    displayName: metadata.name,
+    cachedPaperCount: scanResult.papers.length,
+    cachedFolderCount: scanResult.folders.length,
+    cachedGeneratedAt: generatedAt
+  });
+  await saveLibraryConfig(driveClient, nextConfig);
 
   return {
     ok: true,
     foldersIndexed: scanResult.folders.length,
     papersIndexed: scanResult.papers.length,
     indexFileId: upload.fileId,
-    generatedAt: new Date().toISOString()
+    generatedAt
   };
 }
 
@@ -178,6 +197,74 @@ export async function createSubfolder(
   const folder = await driveClient.createFolder(input.parentFolderId, input.name.trim());
   await rebuildLibraryIndex(session, input.libraryId);
   return folder;
+}
+
+export async function updateFolderMetadata(
+  session: Session,
+  input: {
+    libraryId: string;
+    driveFolderId: string;
+    name?: string;
+    newParentFolderId?: string;
+  }
+) {
+  const driveClient = await createSessionDriveClient(session);
+  const current = await driveClient.getFileMetadata(input.driveFolderId);
+  if (
+    !current.capabilities?.canEdit &&
+    !current.capabilities?.canRename &&
+    !current.capabilities?.canMoveItemWithinDrive
+  ) {
+    throw new AppError(
+      "DRIVE_ACCESS_DENIED",
+      "You cannot rename or move this folder in Drive.",
+      403
+    );
+  }
+
+  const result = await driveClient.updateFolder(input.driveFolderId, {
+    name: input.name?.trim() || undefined,
+    newParentFolderId: input.newParentFolderId?.trim() || undefined
+  });
+
+  if (input.driveFolderId === input.libraryId) {
+    const config = await loadLibraryConfig(driveClient);
+    const nextConfig = upsertLibraryRecord(config, {
+      id: input.libraryId,
+      driveFolderId: input.libraryId,
+      displayName: result.name
+    });
+    await saveLibraryConfig(driveClient, nextConfig);
+  }
+
+  await rebuildLibraryIndex(session, input.libraryId);
+  return result;
+}
+
+export async function trashFolderInLibrary(
+  session: Session,
+  input: { driveFolderId: string; libraryId: string; confirm: boolean }
+) {
+  if (!input.confirm) {
+    throw new AppError("INVALID_REQUEST", "Trash operations require confirmation.", 400);
+  }
+
+  const driveClient = await createSessionDriveClient(session);
+  const current = await driveClient.getFileMetadata(input.driveFolderId);
+  if (!current.capabilities?.canTrash && !current.capabilities?.canDelete) {
+    throw new AppError("DRIVE_ACCESS_DENIED", "You cannot trash this folder in Drive.", 403);
+  }
+
+  await driveClient.trashFolder(input.driveFolderId);
+
+  if (input.driveFolderId === input.libraryId) {
+    const config = await loadLibraryConfig(driveClient);
+    const nextConfig = removeLibraryRecord(config, input.libraryId);
+    await saveLibraryConfig(driveClient, nextConfig);
+    return;
+  }
+
+  await rebuildLibraryIndex(session, input.libraryId);
 }
 
 export async function uploadPaper(
@@ -260,4 +347,59 @@ export async function loadLibraryConfigForSession(
 ): Promise<LibraryConfig> {
   const driveClient = await createSessionDriveClient(session);
   return loadLibraryConfig(driveClient);
+}
+
+export async function loadExplorerDataForSession(session: Session): Promise<{
+  libraries: LibrarySummary[];
+  folders: ExplorerFolder[];
+  papers: ExplorerPaper[];
+}> {
+  const libraries = (await listLibrariesForSession(session)).filter((library) => library.accessible);
+
+  const indexed = await Promise.all(
+    libraries.map(async (library) => {
+      try {
+        const index = await getLibraryIndex(session, library.driveFolderId);
+        return { library, index };
+      } catch {
+        return { library, index: null };
+      }
+    })
+  );
+
+  const folders: ExplorerFolder[] = indexed.flatMap(({ library, index }) => {
+    if (!index) {
+    return [
+        {
+          libraryId: library.driveFolderId,
+          libraryName: library.name,
+          libraryCanEdit: library.canEdit,
+          driveFolderId: library.driveFolderId,
+          parentFolderId: null,
+          name: library.name,
+          path: library.name,
+          depth: 0
+        }
+      ];
+    }
+
+    return index.folders.map((folder) => ({
+      ...folder,
+      libraryId: library.driveFolderId,
+      libraryName: library.name,
+      libraryCanEdit: library.canEdit
+    }));
+  });
+
+  const papers: ExplorerPaper[] = indexed.flatMap(({ library, index }) =>
+    index
+      ? index.papers.map((paper) => ({
+          ...paper,
+          libraryId: library.driveFolderId,
+          libraryName: library.name
+        }))
+      : []
+  );
+
+  return { libraries, folders, papers };
 }

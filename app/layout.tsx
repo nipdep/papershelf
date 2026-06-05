@@ -1,5 +1,7 @@
+import Image from "next/image";
 import Link from "next/link";
 import { unstable_rethrow } from "next/dist/client/components/unstable-rethrow";
+import type { Metadata } from "next";
 import { ReactNode } from "react";
 
 import { auth } from "@/auth";
@@ -9,9 +11,22 @@ import { asAppError } from "@/lib/errors";
 
 import "./globals.css";
 
-export const metadata = {
+export const metadata: Metadata = {
   title: "Papershelf",
-  description: "A very minimal Google Drive paper library."
+  description: "A very minimal Google Drive paper library.",
+  icons: {
+    icon: [{ url: "/favicon-32", sizes: "32x32", type: "image/png" }],
+    shortcut: ["/favicon-32"],
+    apple: [{ url: "/android-icon-192", sizes: "192x192", type: "image/png" }],
+    other: [
+      {
+        rel: "icon",
+        url: "/android-icon-192",
+        sizes: "192x192",
+        type: "image/png"
+      }
+    ]
+  }
 };
 
 export default async function RootLayout({
@@ -37,7 +52,15 @@ export default async function RootLayout({
           <div className="app-frame">
             <header className="frame-header">
               <Link className="brand" href="/">
-                <span className="brand-mark">PS</span>
+                <span className="brand-mark">
+                  <Image
+                    alt="Papershelf"
+                    height={34}
+                    priority
+                    src="/android-icon-192"
+                    width={34}
+                  />
+                </span>
                 <span className="brand-copy">
                   <strong>Papershelf</strong>
                   <span>Drive-native paper library</span>
@@ -55,12 +78,12 @@ export default async function RootLayout({
                       <Link
                         aria-label="Settings"
                         className="shell-icon-button"
-                        href="/admin"
+                        href="/settings"
                         title="Settings"
                       >
                         <svg aria-hidden="true" viewBox="0 0 24 24">
                           <path
-                            d="M19.14 12.94a7.96 7.96 0 0 0 .06-.94 7.96 7.96 0 0 0-.06-.94l2.03-1.58-1.92-3.32-2.39.96a7.28 7.28 0 0 0-1.63-.94L14.96 2h-3.92l-.27 2.18c-.58.22-1.12.53-1.63.94l-2.39-.96-1.92 3.32 2.03 1.58a7.96 7.96 0 0 0-.06.94c0 .32.02.63.06.94l-2.03 1.58 1.92 3.32 2.39-.96c.5.4 1.05.72 1.63.94l.27 2.18h3.92l.27-2.18c.58-.22 1.13-.54 1.63-.94l2.39.96 1.92-3.32-2.03-1.58ZM13 15.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7Z"
+                            d="M4 7h16v2H4V7Zm3 4h10v2H7v-2Zm-2 4h14v2H5v-2Z"
                             fill="currentColor"
                           />
                         </svg>
