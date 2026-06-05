@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { unstable_rethrow } from "next/dist/client/components/unstable-rethrow";
 import { ReactNode } from "react";
 
 import { auth } from "@/auth";
@@ -21,6 +22,7 @@ export default async function RootLayout({
   try {
     session = await auth();
   } catch (error) {
+    unstable_rethrow(error);
     const appError = asAppError(error);
     if (appError.code !== "NOT_AUTHENTICATED") {
       throw appError;

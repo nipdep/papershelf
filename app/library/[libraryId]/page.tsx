@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { revalidatePath } from "next/cache";
 import { notFound, redirect } from "next/navigation";
+import { unstable_rethrow } from "next/dist/client/components/unstable-rethrow";
 
 import { auth } from "@/auth";
 import { FolderTree } from "@/components/folder-tree";
@@ -32,6 +33,7 @@ export default async function LibraryPage({
   try {
     session = requireSession(await auth());
   } catch (error) {
+    unstable_rethrow(error);
     const appError = asAppError(error);
     if (appError.code === "NOT_AUTHENTICATED") {
       redirect("/");
@@ -45,6 +47,7 @@ export default async function LibraryPage({
   try {
     libraries = await listLibrariesForSession(session);
   } catch (error) {
+    unstable_rethrow(error);
     const appError = asAppError(error);
     if (appError.code === "NOT_AUTHENTICATED") {
       redirect("/");
@@ -124,6 +127,7 @@ export default async function LibraryPage({
   try {
     index = await getLibraryIndex(session, libraryId);
   } catch (error) {
+    unstable_rethrow(error);
     const appError = asAppError(error);
     if (appError.code === "NOT_AUTHENTICATED") {
       redirect("/");

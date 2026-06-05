@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { unstable_rethrow } from "next/dist/client/components/unstable-rethrow";
 
 import { auth } from "@/auth";
 import { asAppError } from "@/lib/errors";
@@ -17,6 +18,7 @@ export default async function AdminPage() {
   try {
     session = requireOwner(await auth());
   } catch (error) {
+    unstable_rethrow(error);
     const appError = asAppError(error);
     if (appError.code === "NOT_AUTHENTICATED") {
       redirect("/");
@@ -28,6 +30,7 @@ export default async function AdminPage() {
   try {
     libraries = await listLibrariesForSession(session);
   } catch (error) {
+    unstable_rethrow(error);
     const appError = asAppError(error);
     if (appError.code === "NOT_AUTHENTICATED") {
       redirect("/");

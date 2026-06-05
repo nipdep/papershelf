@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { unstable_rethrow } from "next/dist/client/components/unstable-rethrow";
 
 import { auth } from "@/auth";
 import { SignInButton } from "@/components/auth-buttons";
@@ -91,6 +92,7 @@ export default async function HomePage({
   try {
     libraries = await listLibrariesForSession(session);
   } catch (error) {
+    unstable_rethrow(error);
     const appError = asAppError(error);
     if (appError.code === "NOT_AUTHENTICATED") {
       return (
