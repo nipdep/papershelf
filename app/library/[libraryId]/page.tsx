@@ -5,6 +5,7 @@ import { notFound } from "next/navigation";
 import { auth } from "@/auth";
 import { FolderTree } from "@/components/folder-tree";
 import { PaperTable } from "@/components/paper-table";
+import { AppError } from "@/lib/errors";
 import {
   createSubfolder,
   getLibraryIndex,
@@ -32,6 +33,9 @@ export default async function LibraryPage({
   if (!library?.accessible) {
     notFound();
   }
+
+  const folderId = filters.folder ?? libraryId;
+  const query = filters.q?.trim() ?? "";
 
   async function rebuildAction() {
     "use server";
@@ -93,9 +97,67 @@ export default async function LibraryPage({
     revalidatePath(`/library/${libraryId}`);
   }
 
-  const index = await getLibraryIndex(session, libraryId);
-  const folderId = filters.folder ?? libraryId;
-  const query = filters.q?.trim() ?? "";
+  let index;
+  try {
+    index = await getLibraryIndex(session, libraryId);
+  } catch (error) {
+    if (error instanceof AppError && error.code === "INDEX_NOT_FOUND") {
+      return (
+        <main className="stack">
+          <section className="toolbar">
+            <div>
+              <p className="eyebrow">Library</p>
+              <h1 className="section-title">{library.name}</h1>
+              <p className="muted">Index: missing</p>
+            </div>
+            <div className="row wrap">
+              <Link href="/">Home</Link>
+              {library.canEdit ? (
+                <form action={rebuildAction}>
+                  <button className="button" type="submit">
+                    Rebuild index
+                  </button>
+                </form>
+              ) : null}
+            </div>
+          </section>
+
+          <section className="card stack">
+            <div>
+              <p className="eyebrow">Index missing</p>
+              <h2>This library has not been indexed yet.</h2>
+            </div>
+            <p className="muted">
+              Papershelf could access the Drive folder, but it did not find
+              `.paper-manager/index.sqlite` inside that library yet.
+            </p>
+            {library.canEdit ? (
+              <div className="row wrap">
+                <form action={rebuildAction}>
+                  <button className="button" type="submit">
+                    Build index now
+                  </button>
+                </form>
+                <a
+                  href={`https://drive.google.com/drive/folders/${library.driveFolderId}`}
+                  rel="noreferrer"
+                  target="_blank"
+                >
+                  Open Drive folder
+                </a>
+              </div>
+            ) : (
+              <p className="muted">
+                Ask a library editor to run a rebuild from this page or the admin page.
+              </p>
+            )}
+          </section>
+        </main>
+      );
+    }
+
+    throw error;
+  }
 
   const visiblePapers = index.papers.filter((paper) => {
     const matchesFolder = folderId ? paper.driveFolderId === folderId : true;
