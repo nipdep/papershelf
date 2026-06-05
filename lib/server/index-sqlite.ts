@@ -1,6 +1,4 @@
-import path from "node:path";
-
-import initSqlJs from "sql.js";
+import initSqlJs from "sql.js/dist/sql-asm.js";
 
 import { AppError } from "@/lib/errors";
 import { IndexedFolder, IndexedPaper, LibraryIndexData, SearchResult } from "@/lib/models";
@@ -9,9 +7,7 @@ let sqlPromise: ReturnType<typeof initSqlJs> | null = null;
 
 async function getSql() {
   if (!sqlPromise) {
-    sqlPromise = initSqlJs({
-      locateFile: (file) => path.join(process.cwd(), "node_modules", "sql.js", "dist", file)
-    });
+    sqlPromise = initSqlJs();
   }
 
   return sqlPromise;

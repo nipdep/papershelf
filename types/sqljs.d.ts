@@ -25,3 +25,7 @@ declare module "sql.js" {
     locateFile?: (file: string) => string;
   }): Promise<SqlJsStatic>;
 }
+
+declare module "sql.js/dist/sql-asm.js" {
+  export { default } from "sql.js";
+}
