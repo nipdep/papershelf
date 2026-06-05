@@ -8,7 +8,8 @@ export default defineConfig({
   },
   resolve: {
     alias: {
-      "@": new URL(".", import.meta.url).pathname
+      "@": new URL(".", import.meta.url).pathname,
+      sqlite: "node:sqlite"
     }
   }
 });
