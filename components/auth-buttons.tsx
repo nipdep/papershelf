@@ -4,7 +4,7 @@ import { signIn, signOut } from "@/auth";
 export function SignInButton() {
   if (!isConfiguredForGoogleAuth()) {
     return (
-      <button className="button" disabled>
+      <button className="button button-secondary" disabled>
         Google auth not configured
       </button>
     );
@@ -32,7 +32,7 @@ export function SignOutButton() {
         await signOut();
       }}
     >
-      <button className="button button-secondary" type="submit">
+      <button className="button button-ghost" type="submit">
         Sign out
       </button>
     </form>

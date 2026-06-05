@@ -19,10 +19,11 @@ function renderBranch(
       {children.map((folder) => (
         <li key={folder.driveFolderId}>
           <Link
-            className={currentFolderId === folder.driveFolderId ? "active-link" : ""}
+            className={`tree-link ${currentFolderId === folder.driveFolderId ? "active" : ""}`}
             href={`/library/${libraryId}?folder=${folder.driveFolderId}`}
           >
-            {folder.depth === 0 ? "All papers" : folder.name}
+            <span>{folder.depth === 0 ? "All papers" : folder.name}</span>
+            <span className="tree-meta">{folder.depth === 0 ? "/" : folder.depth}</span>
           </Link>
           {renderBranch(folders, folder.driveFolderId, libraryId, currentFolderId)}
         </li>
@@ -42,8 +43,7 @@ export function FolderTree(props: {
   }
 
   return (
-    <nav className="card stack-sm">
-      <h2>Folders</h2>
+    <nav className="stack-sm">
       {renderBranch(props.folders, null, props.libraryId, props.currentFolderId)}
     </nav>
   );

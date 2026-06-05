@@ -22,27 +22,40 @@ export default async function RootLayout({
     <html lang="en">
       <body>
         <div className="app-shell">
-          <header className="topbar">
-            <Link className="brand" href="/">
-              <span className="eyebrow">Drive paper library</span>
-              <strong>Papershelf</strong>
-            </Link>
-            <div className="row wrap">
-              {session?.user?.email ? (
-                <>
-                  <span className="muted">
-                    {session.user.email}
-                    {session.user.isOwner ? " · owner" : ""}
-                  </span>
-                  {session.user.isOwner ? <Link href="/admin">Admin</Link> : null}
-                  <SignOutButton />
-                </>
-              ) : (
-                <span className="muted">Minimal UI, Drive-backed storage.</span>
-              )}
-            </div>
-          </header>
-          {children}
+          <div className="app-frame">
+            <header className="frame-header">
+              <Link className="brand" href="/">
+                <span className="brand-mark">PS</span>
+                <span className="brand-copy">
+                  <strong>Papershelf</strong>
+                  <span>Drive-native paper workspace</span>
+                </span>
+              </Link>
+              <form action="/" className="header-search" method="get">
+                <span className="header-search-icon">⌘K</span>
+                <input name="q" placeholder="Global search libraries or jump back to workspace" />
+              </form>
+              <div className="header-right">
+                {session?.user?.email ? (
+                  <>
+                    <span className="shell-badge">
+                      {session.user.email}
+                      {session.user.isOwner ? " · owner" : ""}
+                    </span>
+                    {session.user.isOwner ? (
+                      <Link className="shell-link" href="/admin">
+                        Settings
+                      </Link>
+                    ) : null}
+                    <SignOutButton />
+                  </>
+                ) : (
+                  <span className="shell-badge">Google Drive backed research library</span>
+                )}
+              </div>
+            </header>
+            {children}
+          </div>
         </div>
       </body>
     </html>
