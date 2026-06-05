@@ -177,6 +177,23 @@ export async function rebuildLibraryIndex(session: Session, libraryId: string) {
   };
 }
 
+export async function rebuildAccessibleLibraryIndexes(session: Session) {
+  const libraries = (await listLibrariesForSession(session)).filter(
+    (library) => library.accessible && (library.canEdit || session.user.isOwner)
+  );
+
+  const rebuiltLibraryIds: string[] = [];
+  for (const library of libraries) {
+    await rebuildLibraryIndex(session, library.driveFolderId);
+    rebuiltLibraryIds.push(library.driveFolderId);
+  }
+
+  return {
+    ok: true,
+    rebuiltLibraryIds
+  };
+}
+
 export async function getLibraryIndex(
   session: Session,
   libraryId: string

@@ -1,13 +1,17 @@
 import Image from "next/image";
 import Link from "next/link";
+import { revalidatePath } from "next/cache";
 import { unstable_rethrow } from "next/dist/client/components/unstable-rethrow";
 import type { Metadata } from "next";
 import { ReactNode } from "react";
 
 import { auth } from "@/auth";
+import { AutoIndexTrigger } from "@/components/auto-index-trigger";
 import { SignOutButton } from "@/components/auth-buttons";
 import { HeaderSearch } from "@/components/header-search";
 import { asAppError } from "@/lib/errors";
+import { requireSession } from "@/lib/server/authz";
+import { rebuildAccessibleLibraryIndexes } from "@/lib/server/library-service";
 
 import "./globals.css";
 
@@ -45,9 +49,18 @@ export default async function RootLayout({
     }
   }
 
+  async function rebuildIndexesAction() {
+    "use server";
+    const currentSession = requireSession(await auth());
+    await rebuildAccessibleLibraryIndexes(currentSession);
+    revalidatePath("/", "layout");
+    revalidatePath("/admin");
+  }
+
   return (
     <html lang="en">
       <body>
+        <AutoIndexTrigger enabled={Boolean(session?.user?.email)} />
         <div className="app-shell">
           <div className="app-frame">
             <header className="frame-header">
@@ -74,19 +87,21 @@ export default async function RootLayout({
                       {session.user.email}
                       {session.user.isOwner ? " · owner" : ""}
                     </span>
-                    <Link
-                      aria-label="Indexing"
-                      className="shell-icon-button"
-                      href="/admin"
-                      title="Indexing"
-                    >
-                      <svg aria-hidden="true" viewBox="0 0 24 24">
-                        <path
-                          d="M12 5a7 7 0 1 0 6.65 9.2h-1.6A5.5 5.5 0 1 1 15.9 8.1L13 11h7V4l-2.99 2.99A6.96 6.96 0 0 0 12 5Z"
-                          fill="currentColor"
-                        />
-                      </svg>
-                    </Link>
+                    <form action={rebuildIndexesAction}>
+                      <button
+                        aria-label="Rebuild indexes"
+                        className="shell-icon-button"
+                        title="Rebuild indexes"
+                        type="submit"
+                      >
+                        <svg aria-hidden="true" viewBox="0 0 24 24">
+                          <path
+                            d="M12 5a7 7 0 1 0 6.65 9.2h-1.6A5.5 5.5 0 1 1 15.9 8.1L13 11h7V4l-2.99 2.99A6.96 6.96 0 0 0 12 5Z"
+                            fill="currentColor"
+                          />
+                        </svg>
+                      </button>
+                    </form>
                     {session.user.isOwner ? (
                       <Link
                         aria-label="Settings"
