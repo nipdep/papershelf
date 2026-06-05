@@ -74,6 +74,19 @@ export default async function RootLayout({
                       {session.user.email}
                       {session.user.isOwner ? " · owner" : ""}
                     </span>
+                    <Link
+                      aria-label="Indexing"
+                      className="shell-icon-button"
+                      href="/admin"
+                      title="Indexing"
+                    >
+                      <svg aria-hidden="true" viewBox="0 0 24 24">
+                        <path
+                          d="M12 5a7 7 0 1 0 6.65 9.2h-1.6A5.5 5.5 0 1 1 15.9 8.1L13 11h7V4l-2.99 2.99A6.96 6.96 0 0 0 12 5Z"
+                          fill="currentColor"
+                        />
+                      </svg>
+                    </Link>
                     {session.user.isOwner ? (
                       <Link
                         aria-label="Settings"
@@ -83,12 +96,26 @@ export default async function RootLayout({
                       >
                         <svg aria-hidden="true" viewBox="0 0 24 24">
                           <path
-                            d="M4 7h16v2H4V7Zm3 4h10v2H7v-2Zm-2 4h14v2H5v-2Z"
+                            d="M19.14 12.94c.04-.31.06-.63.06-.94s-.02-.63-.06-.94l2.03-1.58a.5.5 0 0 0 .12-.64l-1.92-3.32a.5.5 0 0 0-.6-.22l-2.39.96a7.08 7.08 0 0 0-1.63-.94l-.36-2.54a.5.5 0 0 0-.5-.42h-3.84a.5.5 0 0 0-.5.42l-.36 2.54c-.58.22-1.12.53-1.63.94l-2.39-.96a.5.5 0 0 0-.6.22L2.71 8.84a.5.5 0 0 0 .12.64l2.03 1.58c-.04.31-.06.63-.06.94s.02.63.06.94l-2.03 1.58a.5.5 0 0 0-.12.64l1.92 3.32a.5.5 0 0 0 .6.22l2.39-.96c.51.4 1.05.72 1.63.94l.36 2.54a.5.5 0 0 0 .5.42h3.84a.5.5 0 0 0 .5-.42l.36-2.54c.58-.22 1.12-.53 1.63-.94l2.39.96a.5.5 0 0 0 .6-.22l1.92-3.32a.5.5 0 0 0-.12-.64l-2.03-1.58ZM12 15.5A3.5 3.5 0 1 1 12 8.5a3.5 3.5 0 0 1 0 7Z"
                             fill="currentColor"
                           />
                         </svg>
                       </Link>
-                    ) : null}
+                    ) : (
+                      <Link
+                        aria-label="Settings"
+                        className="shell-icon-button"
+                        href="/settings"
+                        title="Settings"
+                      >
+                        <svg aria-hidden="true" viewBox="0 0 24 24">
+                          <path
+                            d="M19.14 12.94c.04-.31.06-.63.06-.94s-.02-.63-.06-.94l2.03-1.58a.5.5 0 0 0 .12-.64l-1.92-3.32a.5.5 0 0 0-.6-.22l-2.39.96a7.08 7.08 0 0 0-1.63-.94l-.36-2.54a.5.5 0 0 0-.5-.42h-3.84a.5.5 0 0 0-.5.42l-.36 2.54c-.58.22-1.12.53-1.63.94l-2.39-.96a.5.5 0 0 0-.6.22L2.71 8.84a.5.5 0 0 0 .12.64l2.03 1.58c-.04.31-.06.63-.06.94s.02.63.06.94l-2.03 1.58a.5.5 0 0 0-.12.64l1.92 3.32a.5.5 0 0 0 .6.22l2.39-.96c.51.4 1.05.72 1.63.94l.36 2.54a.5.5 0 0 0 .5.42h3.84a.5.5 0 0 0 .5-.42l.36-2.54c.58-.22 1.12-.53 1.63-.94l2.39.96a.5.5 0 0 0 .6-.22l1.92-3.32a.5.5 0 0 0-.12-.64l-2.03-1.58ZM12 15.5A3.5 3.5 0 1 1 12 8.5a3.5 3.5 0 0 1 0 7Z"
+                            fill="currentColor"
+                          />
+                        </svg>
+                      </Link>
+                    )}
                     <SignOutButton />
                   </>
                 ) : (

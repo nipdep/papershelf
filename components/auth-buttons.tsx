@@ -40,7 +40,7 @@ export function SignOutButton() {
       >
         <svg aria-hidden="true" viewBox="0 0 24 24">
           <path
-            d="M14 4h-4a2 2 0 0 0-2 2v3h2V6h4v12h-4v-3H8v3a2 2 0 0 0 2 2h4a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2Zm3.59 7-2.29-2.29-1.41 1.41L13.17 11H6v2h7.17l.71.88 1.41 1.41L17.59 13H20v-2h-2.41Z"
+            d="M10 4H5a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h5v-2H5V6h5V4Zm7.59 4.59L19 10l-4 4-1.41-1.41L15.17 11H9V9h6.17l-1.58-1.59L15 6l4 4-1.41 1.41Z"
             fill="currentColor"
           />
         </svg>

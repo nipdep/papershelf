@@ -1,9 +1,13 @@
-import { redirect } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { unstable_rethrow } from "next/dist/client/components/unstable-rethrow";
 
 import { auth } from "@/auth";
 import { asAppError } from "@/lib/errors";
-import { createSessionDriveClient } from "@/lib/server/library-service";
+import { isConfiguredForPublicDriveBrowsing } from "@/lib/env";
+import {
+  createPublicDriveClient,
+  createSessionDriveClient
+} from "@/lib/server/library-service";
 import { requireSession } from "@/lib/server/authz";
 
 export default async function PaperPage({
@@ -11,20 +15,28 @@ export default async function PaperPage({
 }: {
   params: Promise<{ driveFileId: string }>;
 }) {
-  let session;
+  let session = null;
   try {
     session = requireSession(await auth());
   } catch (error) {
     unstable_rethrow(error);
     const appError = asAppError(error);
-    if (appError.code === "NOT_AUTHENTICATED") {
-      redirect("/");
+    if (appError.code !== "NOT_AUTHENTICATED") {
+      throw appError;
     }
-    throw appError;
   }
   const { driveFileId } = await params;
   try {
-    const driveClient = await createSessionDriveClient(session);
+    const driveClient = session
+      ? await createSessionDriveClient(session)
+      : isConfiguredForPublicDriveBrowsing()
+        ? await createPublicDriveClient()
+        : null;
+
+    if (!driveClient) {
+      redirect("/");
+    }
+
     const file = await driveClient.getFileMetadata(driveFileId);
 
     redirect(
@@ -35,6 +47,9 @@ export default async function PaperPage({
     const appError = asAppError(error);
     if (appError.code === "NOT_AUTHENTICATED") {
       redirect("/");
+    }
+    if (appError.code === "DRIVE_NOT_FOUND") {
+      notFound();
     }
     throw appError;
   }

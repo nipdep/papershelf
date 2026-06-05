@@ -203,6 +203,16 @@ code {
   color: var(--text-soft);
 }
 
+.shell-link-with-icon {
+  gap: 8px;
+}
+
+.shell-link-with-icon svg {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 16px;
+}
+
 .shell-link:hover {
   background: var(--bg-hover);
   color: var(--text);
@@ -544,6 +554,12 @@ code {
   gap: 4px;
 }
 
+.finder-sidebar-eyebrow {
+  font-size: 0.82rem;
+  letter-spacing: 0.1em;
+  color: var(--text-faint);
+}
+
 .folder-list,
 .inspector-list,
 .meta-list {
@@ -602,7 +618,8 @@ code {
   gap: 10px;
   padding: 7px 10px;
   border-radius: 10px;
-  color: var(--text-soft);
+  color: #495468;
+  font-size: 0.94rem;
 }
 
 .tree-link:hover {
@@ -618,14 +635,8 @@ code {
 
 .tree-label {
   display: inline-flex;
-  align-items: center;
-  gap: 8px;
   min-width: 0;
-}
-
-.tree-icon {
-  color: #7c8799;
-  font-size: 0.8rem;
+  line-height: 1.25;
 }
 
 .tree-link-root {
@@ -1010,27 +1021,8 @@ code {
 
 .finder-file-link {
   display: flex;
-  align-items: center;
-  gap: 12px;
+  align-items: flex-start;
   min-width: 0;
-}
-
-.finder-file-icon {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 36px;
-  height: 36px;
-  border-radius: 10px;
-  background: #fff3f0;
-  color: #c2410c;
-  font-size: 0.72rem;
-  font-weight: 700;
-}
-
-.finder-folder-icon {
-  background: #eef6ff;
-  color: #1d4ed8;
 }
 
 .finder-file-copy {

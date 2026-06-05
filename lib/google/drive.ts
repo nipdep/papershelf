@@ -6,6 +6,7 @@ import type { drive_v3 } from "googleapis";
 import { Session } from "next-auth";
 
 import { AppError } from "@/lib/errors";
+import { getGoogleApiKey } from "@/lib/env";
 import { DriveItem } from "@/lib/models";
 
 const DRIVE_FIELDS = [
@@ -191,6 +192,18 @@ async function findIndexFile(
   return findChildByName(drive, paperManagerFolderId, "index.sqlite");
 }
 
+async function getIndexFileForRoot(
+  drive: drive_v3.Drive,
+  rootFolderId: string
+): Promise<DriveItem | null> {
+  const folder = await getPaperManagerFolder(drive, rootFolderId);
+  if (!folder) {
+    return null;
+  }
+
+  return findIndexFile(drive, folder.id);
+}
+
 async function getAppConfigFile(drive: drive_v3.Drive): Promise<DriveItem | null> {
   const response = await drive.files.list({
     spaces: "appDataFolder",
@@ -216,6 +229,35 @@ export async function getDriveClientForSession(session: Session): Promise<DriveC
   auth.setCredentials({ access_token: accessToken });
 
   const drive = google.drive({ version: "v3", auth });
+  return createDriveClient(drive, "session");
+}
+
+export async function getPublicDriveClient(): Promise<DriveClient> {
+  const apiKey = getGoogleApiKey();
+  if (!apiKey) {
+    throw new AppError(
+      "NOT_AUTHENTICATED",
+      "Public Drive browsing is not configured for this app.",
+      401
+    );
+  }
+
+  const drive = google.drive({ version: "v3", auth: apiKey });
+  return createDriveClient(drive, "public");
+}
+
+function createReadOnlyDriveError(): AppError {
+  return new AppError(
+    "DRIVE_ACCESS_DENIED",
+    "This Drive client is read-only for publicly shared content.",
+    403
+  );
+}
+
+function createDriveClient(
+  drive: drive_v3.Drive,
+  accessMode: "session" | "public"
+): DriveClient {
   const getMetadata = async (fileId: string) => {
     try {
       const response = await drive.files.get({
@@ -233,12 +275,7 @@ export async function getDriveClientForSession(session: Session): Promise<DriveC
     getFileMetadata: getMetadata,
 
     async getIndexFileMetadata(rootFolderId) {
-      const folder = await getPaperManagerFolder(drive, rootFolderId);
-      if (!folder) {
-        return null;
-      }
-
-      return findIndexFile(drive, folder.id);
+      return getIndexFileForRoot(drive, rootFolderId);
     },
 
     async listFolderChildren(folderId, pageToken) {
@@ -264,10 +301,16 @@ export async function getDriveClientForSession(session: Session): Promise<DriveC
     },
 
     ensurePaperManagerFolder(rootFolderId) {
+      if (accessMode === "public") {
+        throw createReadOnlyDriveError();
+      }
       return getOrCreatePaperManagerFolder(drive, rootFolderId);
     },
 
     async uploadOrUpdateIndexSqlite(rootFolderId, bytes) {
+      if (accessMode === "public") {
+        throw createReadOnlyDriveError();
+      }
       const folder = await getOrCreatePaperManagerFolder(drive, rootFolderId);
       const existing = await findIndexFile(drive, folder.id);
       const media = {
@@ -298,8 +341,7 @@ export async function getDriveClientForSession(session: Session): Promise<DriveC
     },
 
     async downloadIndexSqlite(rootFolderId) {
-      const folder = await getOrCreatePaperManagerFolder(drive, rootFolderId);
-      const existing = await findIndexFile(drive, folder.id);
+      const existing = await getIndexFileForRoot(drive, rootFolderId);
       if (!existing) {
         return null;
       }
@@ -319,6 +361,9 @@ export async function getDriveClientForSession(session: Session): Promise<DriveC
     },
 
     async readAppConfig() {
+      if (accessMode === "public") {
+        return null;
+      }
       let existing: DriveItem | null;
       try {
         existing = await getAppConfigFile(drive);
@@ -348,6 +393,9 @@ export async function getDriveClientForSession(session: Session): Promise<DriveC
     },
 
     async writeAppConfig(json) {
+      if (accessMode === "public") {
+        throw createReadOnlyDriveError();
+      }
       const existing = await getAppConfigFile(drive);
       const media = {
         mimeType: "application/json",
@@ -374,6 +422,9 @@ export async function getDriveClientForSession(session: Session): Promise<DriveC
     },
 
     async createFolder(parentFolderId, name) {
+      if (accessMode === "public") {
+        throw createReadOnlyDriveError();
+      }
       const response = await drive.files.create({
         requestBody: {
           name,
@@ -388,6 +439,9 @@ export async function getDriveClientForSession(session: Session): Promise<DriveC
     },
 
     async updateFolder(driveFolderId, updates) {
+      if (accessMode === "public") {
+        throw createReadOnlyDriveError();
+      }
       const current = await getMetadata(driveFolderId);
       const response = await drive.files.update({
         fileId: driveFolderId,
@@ -406,6 +460,9 @@ export async function getDriveClientForSession(session: Session): Promise<DriveC
     },
 
     async trashFolder(driveFolderId) {
+      if (accessMode === "public") {
+        throw createReadOnlyDriveError();
+      }
       await drive.files.update({
         fileId: driveFolderId,
         requestBody: {
@@ -417,6 +474,9 @@ export async function getDriveClientForSession(session: Session): Promise<DriveC
     },
 
     async uploadPdf(parentFolderId, fileName, mimeType, bytes) {
+      if (accessMode === "public") {
+        throw createReadOnlyDriveError();
+      }
       const response = await drive.files.create({
         requestBody: {
           name: fileName,
@@ -433,6 +493,9 @@ export async function getDriveClientForSession(session: Session): Promise<DriveC
     },
 
     async updatePaper(driveFileId, updates) {
+      if (accessMode === "public") {
+        throw createReadOnlyDriveError();
+      }
       const current = await getMetadata(driveFileId);
       const response = await drive.files.update({
         fileId: driveFileId,
@@ -451,6 +514,9 @@ export async function getDriveClientForSession(session: Session): Promise<DriveC
     },
 
     async trashPaper(driveFileId) {
+      if (accessMode === "public") {
+        throw createReadOnlyDriveError();
+      }
       await drive.files.update({
         fileId: driveFileId,
         requestBody: {

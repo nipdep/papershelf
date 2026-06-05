@@ -41,6 +41,8 @@ cp .env.example .env.local
 ```
 
 3. Fill in Google OAuth and owner values.
+   If you want anonymous read-only access for public libraries, also set `GOOGLE_API_KEY`
+   and list those library root folder IDs in `DEFAULT_LIBRARY_FOLDER_IDS`.
 
 4. Start the app:
 
@@ -69,3 +71,5 @@ npm run build
 - Library configuration is stored in the owner's Google Drive `appDataFolder`.
 - Each indexed library stores `.paper-manager/index.sqlite` in the Drive root folder.
 - The index is rebuildable cache, not authoritative metadata.
+- Anonymous browsing is read-only and only works for publicly shared libraries listed in
+  `DEFAULT_LIBRARY_FOLDER_IDS`.

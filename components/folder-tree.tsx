@@ -344,10 +344,7 @@ export function FolderTree({
             className={`tree-link ${currentFolderId === folder.driveFolderId ? "active" : ""}`}
             href={href as never}
           >
-            <span className="tree-label">
-              <span className="tree-icon">□</span>
-              <span>{folder.name}</span>
-            </span>
+            <span className="tree-label">{folder.name}</span>
           </Link>
           {folderCanEdit ? renderFolderMenu(folder, folderLibraryId, moveOptions, "child") : null}
         </div>
@@ -387,10 +384,7 @@ export function FolderTree({
               className={`tree-link ${currentFolderId === root.driveFolderId ? "active" : ""}`}
               href={hrefForFolder(root) as never}
             >
-              <span className="tree-label">
-                <span className="tree-icon">▣</span>
-                <span>{root.name}</span>
-              </span>
+              <span className="tree-label">{root.name}</span>
             </Link>
             {rootCanEdit ? renderFolderMenu(root, rootLibraryId, [], "root") : null}
           </div>

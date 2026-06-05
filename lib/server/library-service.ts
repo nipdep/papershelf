@@ -1,7 +1,12 @@
 import { Session } from "next-auth";
 
 import { AppError } from "@/lib/errors";
-import { DriveClient, getDriveClientForSession } from "@/lib/google/drive";
+import { getDefaultLibraryFolderIds } from "@/lib/env";
+import {
+  DriveClient,
+  getDriveClientForSession,
+  getPublicDriveClient
+} from "@/lib/google/drive";
 import { canEditFromCapabilities } from "@/lib/server/authz";
 import {
   loadLibraryConfig,
@@ -22,6 +27,10 @@ import { parseDriveFolderInput } from "@/lib/utils/drive";
 
 export async function createSessionDriveClient(session: Session): Promise<DriveClient> {
   return getDriveClientForSession(session);
+}
+
+export async function createPublicDriveClient(): Promise<DriveClient> {
+  return getPublicDriveClient();
 }
 
 async function summarizeLibrary(
@@ -67,6 +76,23 @@ export async function listLibrariesForSession(session: Session): Promise<Library
   const summaries = await Promise.all(config.libraries.map((library) => summarizeLibrary(driveClient, library)));
 
   return summaries;
+}
+
+export async function listPublicLibraries(): Promise<LibrarySummary[]> {
+  const driveClient = await createPublicDriveClient();
+  const defaults = getDefaultLibraryFolderIds();
+
+  const summaries = await Promise.all(
+    defaults.map((driveFolderId) =>
+      summarizeLibrary(driveClient, {
+        id: driveFolderId,
+        driveFolderId,
+        addedAt: new Date().toISOString()
+      })
+    )
+  );
+
+  return summaries.filter((library) => library.accessible);
 }
 
 export async function getLibrarySummaryForSession(
@@ -355,21 +381,56 @@ export async function loadExplorerDataForSession(session: Session): Promise<{
   papers: ExplorerPaper[];
 }> {
   const libraries = (await listLibrariesForSession(session)).filter((library) => library.accessible);
-
-  const indexed = await Promise.all(
-    libraries.map(async (library) => {
+  return loadExplorerDataFromLibraries(
+    libraries,
+    async (library) => {
       try {
-        const index = await getLibraryIndex(session, library.driveFolderId);
-        return { library, index };
+        return await getLibraryIndex(session, library.driveFolderId);
       } catch {
-        return { library, index: null };
+        return null;
       }
-    })
+    }
+  );
+}
+
+export async function loadExplorerDataForPublicAccess(): Promise<{
+  libraries: LibrarySummary[];
+  folders: ExplorerFolder[];
+  papers: ExplorerPaper[];
+}> {
+  const driveClient = await createPublicDriveClient();
+  const libraries = await listPublicLibraries();
+  return loadExplorerDataFromLibraries(
+    libraries,
+    async (library) => {
+      try {
+        const bytes = await driveClient.downloadIndexSqlite(library.driveFolderId);
+        return bytes ? parseIndexSqlite(bytes) : null;
+      } catch {
+        return null;
+      }
+    }
+  );
+}
+
+async function loadExplorerDataFromLibraries(
+  libraries: LibrarySummary[],
+  loadIndex: (library: LibrarySummary) => Promise<LibraryIndexData | null>
+): Promise<{
+  libraries: LibrarySummary[];
+  folders: ExplorerFolder[];
+  papers: ExplorerPaper[];
+}> {
+  const indexed = await Promise.all(
+    libraries.map(async (library) => ({
+      library,
+      index: await loadIndex(library)
+    }))
   );
 
   const folders: ExplorerFolder[] = indexed.flatMap(({ library, index }) => {
     if (!index) {
-    return [
+      return [
         {
           libraryId: library.driveFolderId,
           libraryName: library.name,

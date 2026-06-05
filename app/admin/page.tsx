@@ -11,12 +11,12 @@ import {
   rebuildLibraryIndex,
   removeLibraryForOwner
 } from "@/lib/server/library-service";
-import { requireOwner } from "@/lib/server/authz";
+import { requireOwner, requireSession } from "@/lib/server/authz";
 
 export default async function AdminPage() {
   let session;
   try {
-    session = requireOwner(await auth());
+    session = requireSession(await auth());
   } catch (error) {
     unstable_rethrow(error);
     const appError = asAppError(error);
@@ -59,7 +59,7 @@ export default async function AdminPage() {
 
   async function rebuildLibraryAction(formData: FormData) {
     "use server";
-    const currentSession = requireOwner(await auth());
+    const currentSession = requireSession(await auth());
     const libraryId = String(formData.get("libraryId") ?? "");
     await rebuildLibraryIndex(currentSession, libraryId);
     revalidatePath("/");
@@ -67,17 +67,13 @@ export default async function AdminPage() {
     revalidatePath(`/library/${libraryId}`);
   }
 
-  if (!session.user.isOwner) {
-    redirect("/");
-  }
-
   return (
     <main className="workspace">
       <header className="page-header">
         <div className="title-cluster">
-          <p className="eyebrow">Settings</p>
-          <h1>Library settings</h1>
-          <p>Manage Drive roots, rebuild indexes, and keep the workspace tidy.</p>
+          <p className="eyebrow">Indexing</p>
+          <h1>Library indexing</h1>
+          <p>Rebuild indexes for the libraries you can edit in Drive.</p>
         </div>
         <Link className="button button-secondary" href="/">
           Back to libraries
@@ -88,8 +84,13 @@ export default async function AdminPage() {
         <section className="section-panel">
           <section className="card glass-card">
             <div className="title-cluster">
-              <p className="eyebrow">Owner</p>
+              <p className="eyebrow">Account</p>
               <h2>{session.user.email}</h2>
+              <p className="muted">
+                {session.user.isOwner
+                  ? "Owner access includes library registration and removal."
+                  : "You can rebuild indexes where Drive gives you edit access."}
+              </p>
             </div>
           </section>
 
@@ -112,7 +113,11 @@ export default async function AdminPage() {
                 <div className="card-actions">
                   <form action={rebuildLibraryAction}>
                     <input name="libraryId" type="hidden" value={library.driveFolderId} />
-                    <button className="button button-secondary" type="submit">
+                    <button
+                      className="button button-secondary"
+                      disabled={!library.canEdit && !session.user.isOwner}
+                      type="submit"
+                    >
                       Rebuild index
                     </button>
                   </form>
@@ -124,39 +129,43 @@ export default async function AdminPage() {
                   >
                     Open Drive folder
                   </a>
-                  <form action={removeLibraryAction}>
-                    <input name="libraryId" type="hidden" value={library.id} />
-                    <button className="button button-danger" type="submit">
-                      Remove
-                    </button>
-                  </form>
+                  {session.user.isOwner ? (
+                    <form action={removeLibraryAction}>
+                      <input name="libraryId" type="hidden" value={library.id} />
+                      <button className="button button-danger" type="submit">
+                        Remove
+                      </button>
+                    </form>
+                  ) : null}
                 </div>
               </article>
             ))}
           </section>
         </section>
 
-        <aside className="section-panel">
-          <section className="card">
-            <div className="title-cluster">
-              <p className="eyebrow">Add library</p>
-              <h2>New Drive root</h2>
-            </div>
-            <form action={addLibraryAction} className="subtle-form">
-              <div className="field">
-                <label htmlFor="driveFolderIdOrUrl">Drive folder URL or ID</label>
-                <input id="driveFolderIdOrUrl" name="driveFolderIdOrUrl" required />
+        {session.user.isOwner ? (
+          <aside className="section-panel">
+            <section className="card">
+              <div className="title-cluster">
+                <p className="eyebrow">Add library</p>
+                <h2>New Drive root</h2>
               </div>
-              <div className="field">
-                <label htmlFor="displayName">Display name</label>
-                <input id="displayName" name="displayName" />
-              </div>
-              <button className="button" type="submit">
-                Add to workspace
-              </button>
-            </form>
-          </section>
-        </aside>
+              <form action={addLibraryAction} className="subtle-form">
+                <div className="field">
+                  <label htmlFor="driveFolderIdOrUrl">Drive folder URL or ID</label>
+                  <input id="driveFolderIdOrUrl" name="driveFolderIdOrUrl" required />
+                </div>
+                <div className="field">
+                  <label htmlFor="displayName">Display name</label>
+                  <input id="displayName" name="displayName" />
+                </div>
+                <button className="button" type="submit">
+                  Add to workspace
+                </button>
+              </form>
+            </section>
+          </aside>
+        ) : null}
       </div>
     </main>
   );

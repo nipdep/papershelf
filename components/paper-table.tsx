@@ -12,6 +12,21 @@ function compareText(a: string, b: string) {
   return a.localeCompare(b, undefined, { sensitivity: "base" });
 }
 
+function getParentFolderName(paper: ExplorerPaper) {
+  const normalizedPath = paper.path.trim();
+  if (!normalizedPath) {
+    return paper.libraryName;
+  }
+
+  const expectedSuffix = `/${paper.fileName}`;
+  const folderPath = normalizedPath.endsWith(expectedSuffix)
+    ? normalizedPath.slice(0, -expectedSuffix.length)
+    : normalizedPath;
+  const segments = folderPath.split("/").filter(Boolean);
+
+  return segments.at(-1) ?? paper.libraryName;
+}
+
 function sortPapers(
   papers: ExplorerPaper[],
   sortKey: SortKey | null,
@@ -41,7 +56,7 @@ function sortPapers(
         result = (left.sizeBytes ?? 0) - (right.sizeBytes ?? 0);
         break;
       case "kind":
-        result = compareText(left.mimeType ?? "PDF Document", right.mimeType ?? "PDF Document");
+        result = compareText(getParentFolderName(left), getParentFolderName(right));
         break;
     }
 
@@ -174,9 +189,9 @@ export function PaperTable({
           <tr>
             {header("name", "Name", "name")}
             {showLibraryName ? header("library", "Library", "library") : null}
+            {header("kind", "Folder", "kind")}
             {header("modified", "Date Modified", "modified")}
             {header("size", "Size", "size")}
-            {header("kind", "Kind", "kind")}
             <th />
           </tr>
         </thead>
@@ -195,7 +210,6 @@ export function PaperTable({
               >
                 <td style={{ width: columnWidths.name }}>
                   <Link className="finder-file-link" href={itemHref as never}>
-                    <span className="finder-file-icon">PDF</span>
                     <span className="finder-file-copy">
                       <strong>{paper.title}</strong>
                       <span>{paper.fileName}</span>
@@ -207,14 +221,14 @@ export function PaperTable({
                     {paper.libraryName}
                   </td>
                 ) : null}
+                <td className="muted" style={{ width: columnWidths.kind }}>
+                  {getParentFolderName(paper)}
+                </td>
                 <td className="muted" style={{ width: columnWidths.modified }}>
                   {paper.modifiedTime ? new Date(paper.modifiedTime).toLocaleString() : "Unknown"}
                 </td>
                 <td className="muted" style={{ width: columnWidths.size }}>
                   {paper.sizeBytes ? `${Math.round(paper.sizeBytes / 1024)} KB` : "--"}
-                </td>
-                <td className="muted" style={{ width: columnWidths.kind }}>
-                  PDF Document
                 </td>
                 <td>
                   <div className="row-actions">

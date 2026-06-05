@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { revalidatePath } from "next/cache";
 import { cookies } from "next/headers";
-import { redirect } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { unstable_rethrow } from "next/dist/client/components/unstable-rethrow";
 
 import { auth } from "@/auth";
@@ -10,11 +10,15 @@ import { FolderTree } from "@/components/folder-tree";
 import { PaperTable } from "@/components/paper-table";
 import { ViewModeSwitcher } from "@/components/view-mode-switcher";
 import { asAppError } from "@/lib/errors";
-import { isConfiguredForGoogleAuth } from "@/lib/env";
+import {
+  isConfiguredForGoogleAuth,
+  isConfiguredForPublicDriveBrowsing
+} from "@/lib/env";
 import { ExplorerFolder } from "@/lib/models";
 import { requireSession } from "@/lib/server/authz";
 import {
   createSubfolder,
+  loadExplorerDataForPublicAccess,
   loadExplorerDataForSession,
   rebuildLibraryIndex,
   trashFolderInLibrary,
@@ -68,8 +72,10 @@ export default async function HomePage({
   const folderId = params?.folder;
   const selectedPaperId = params?.paper;
   const globalQuery = params?.q?.trim().toLowerCase() ?? "";
+  const hasDirectPublicTarget = Boolean(folderId || selectedPaperId);
+  const canTryPublicBrowsing = isConfiguredForPublicDriveBrowsing() && hasDirectPublicTarget;
 
-  if (!isConfiguredForGoogleAuth()) {
+  if (!isConfiguredForGoogleAuth() && !canTryPublicBrowsing) {
     return (
       <main className="workspace hero-center">
         <section className="card hero-panel glass-card stack">
@@ -86,7 +92,10 @@ export default async function HomePage({
     );
   }
 
-  if (!session?.user?.email) {
+  const hasValidSession = Boolean(session?.user?.email && !session?.user?.authError);
+  const signedInSession = hasValidSession ? session! : null;
+
+  if (!hasValidSession && !canTryPublicBrowsing) {
     return (
       <main className="workspace hero-center">
         <section className="card hero-panel glass-card stack">
@@ -106,7 +115,7 @@ export default async function HomePage({
     );
   }
 
-  if (session.user.authError) {
+  if (session?.user?.authError && !canTryPublicBrowsing) {
     return (
       <main className="workspace hero-center">
         <section className="card hero-panel glass-card stack">
@@ -125,14 +134,30 @@ export default async function HomePage({
 
   let explorer;
   try {
-    explorer = await loadExplorerDataForSession(session);
+    if (signedInSession) {
+      explorer = await loadExplorerDataForSession(signedInSession);
+    } else {
+      explorer = await loadExplorerDataForPublicAccess();
+    }
   } catch (error) {
     unstable_rethrow(error);
     const appError = asAppError(error);
     if (appError.code === "NOT_AUTHENTICATED") {
+      if (canTryPublicBrowsing) {
+        notFound();
+      }
       redirect("/");
     }
     throw appError;
+  }
+
+  if (
+    !hasValidSession &&
+    hasDirectPublicTarget &&
+    !explorer.folders.some((folder) => folder.driveFolderId === folderId) &&
+    !explorer.papers.some((paper) => paper.driveFileId === selectedPaperId)
+  ) {
+    notFound();
   }
 
   const cookieStore = await cookies();
@@ -222,25 +247,20 @@ export default async function HomePage({
         <aside className="finder-sidebar">
           <div className="pane-header finder-sidebar-header">
             <div className="pane-title">
-              <strong>Libraries</strong>
-              <span className="muted">
-                {selectedFolder
-                  ? `${selectedFolder.libraryName} · ${selectedFolder.name}`
-                  : `${explorer.libraries.length} libraries · ${visiblePapers.length} papers`}
-              </span>
+              <p className="eyebrow finder-sidebar-eyebrow">Library</p>
             </div>
           </div>
           <FolderTree
-            canEdit={true}
-            createFolderAction={createFolderAction}
+            canEdit={hasValidSession}
+            createFolderAction={hasValidSession ? createFolderAction : undefined}
             currentFolderId={folderId}
             folders={explorer.folders}
             pageMode="root"
             query={globalQuery}
-            rebuildAction={rebuildAction}
-            trashFolderAction={trashFolderAction}
-            updateFolderAction={updateFolderAction}
-            uploadAction={uploadAction}
+            rebuildAction={hasValidSession ? rebuildAction : undefined}
+            trashFolderAction={hasValidSession ? trashFolderAction : undefined}
+            updateFolderAction={hasValidSession ? updateFolderAction : undefined}
+            uploadAction={hasValidSession ? uploadAction : undefined}
           />
         </aside>
 
@@ -249,12 +269,6 @@ export default async function HomePage({
             <div className="title-cluster">
               <p className="eyebrow">Collection</p>
               <h2>{selectedFolder ? selectedFolder.name : "All Libraries"}</h2>
-              <p>
-                {selectedFolder
-                  ? `Showing papers from ${selectedFolder.libraryName} and this folder's descendants.`
-                  : "Showing papers across all accessible libraries."}
-                {globalQuery ? ` Filtered by "${globalQuery}".` : ""}
-              </p>
             </div>
             <div className="mini-actions">
               <ViewModeSwitcher value={layoutMode} />

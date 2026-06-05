@@ -10,6 +10,7 @@ const optionalString = () =>
 const envSchema = z.object({
   GOOGLE_CLIENT_ID: optionalString(),
   GOOGLE_CLIENT_SECRET: optionalString(),
+  GOOGLE_API_KEY: optionalString(),
   AUTH_SECRET: optionalString(),
   NEXTAUTH_SECRET: optionalString(),
   AUTH_URL: z.preprocess(
@@ -40,6 +41,7 @@ export function getEnv(): Env {
   return envSchema.parse({
     GOOGLE_CLIENT_ID: process.env.GOOGLE_CLIENT_ID,
     GOOGLE_CLIENT_SECRET: process.env.GOOGLE_CLIENT_SECRET,
+    GOOGLE_API_KEY: process.env.GOOGLE_API_KEY,
     AUTH_SECRET: process.env.AUTH_SECRET,
     NEXTAUTH_SECRET: process.env.NEXTAUTH_SECRET,
     AUTH_URL: process.env.AUTH_URL,
@@ -67,6 +69,15 @@ export function isConfiguredForGoogleAuth(): boolean {
       (env.AUTH_SECRET ?? env.NEXTAUTH_SECRET) &&
       env.SYSTEM_OWNER_EMAIL
   );
+}
+
+export function getGoogleApiKey(): string | undefined {
+  return getEnv().GOOGLE_API_KEY;
+}
+
+export function isConfiguredForPublicDriveBrowsing(): boolean {
+  const env = getEnv();
+  return Boolean(env.GOOGLE_API_KEY && getDefaultLibraryFolderIds().length > 0);
 }
 
 export function isOwnerEmail(email?: string | null): boolean {
