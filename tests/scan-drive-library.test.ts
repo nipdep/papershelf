@@ -24,7 +24,8 @@ function createDriveClient(): DriveClient {
             {
               id: "paper-root",
               name: "Intro.pdf",
-              mimeType: "application/pdf"
+              mimeType: "application/pdf",
+              permissions: [{ type: "anyone", role: "reader", allowFileDiscovery: false }]
             },
             {
               id: "ignored",
@@ -52,7 +53,8 @@ function createDriveClient(): DriveClient {
             {
               id: "paper-ml",
               name: "Attention_Is_All_You_Need.pdf",
-              mimeType: "application/pdf"
+              mimeType: "application/pdf",
+              permissions: [{ type: "user", role: "reader" }]
             }
           ]
         };
@@ -97,6 +99,10 @@ describe("scanDriveLibrary", () => {
     expect(result.papers.map((paper) => paper.path)).toEqual([
       "/Intro.pdf",
       "/ML/Attention_Is_All_You_Need.pdf"
+    ]);
+    expect(result.papers.map((paper) => paper.accessLevel)).toEqual([
+      "anyone_with_link",
+      "restricted"
     ]);
   });
 });

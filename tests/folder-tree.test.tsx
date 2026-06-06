@@ -8,6 +8,7 @@ describe("FolderTree", () => {
   it("renders nested folders", () => {
     render(
       <FolderTree
+        canEdit={false}
         currentFolderId="child"
         folders={[
           {
@@ -26,10 +27,11 @@ describe("FolderTree", () => {
           }
         ]}
         libraryId="root"
+        pageMode="library"
       />
     );
 
-    expect(screen.getByText("All Papers")).toBeInTheDocument();
+    expect(screen.getByText("Root")).toBeInTheDocument();
     expect(screen.getByText("ML")).toBeInTheDocument();
   });
 });

@@ -11,8 +11,8 @@ import { jsonError } from "@/lib/server/http";
 
 export async function GET() {
   try {
-    const session = requireSession(await auth());
-    const libraries = session.user.hasDriveAccess
+    const session = await auth();
+    const libraries = session?.user?.hasDriveAccess
       ? await listLibrariesForSession(session)
       : await listPublicLibraries();
     return NextResponse.json({ libraries });

@@ -61,6 +61,11 @@ function getSingleStringValue(
   return typeof row?.value === "string" ? row.value : undefined;
 }
 
+function hasColumn(db: Database, tableName: string, columnName: string): boolean {
+  const rows = queryRows(db, `PRAGMA table_info(${tableName});`);
+  return rows.some((row) => String(row.name) === columnName);
+}
+
 export async function createIndexSqlite(input: {
   folders: IndexedFolder[];
   papers: IndexedPaper[];
@@ -96,6 +101,7 @@ export async function createIndexSqlite(input: {
         created_time TEXT,
         size_bytes INTEGER,
         web_view_link TEXT,
+        access_level TEXT NOT NULL DEFAULT 'restricted',
         indexed_at TEXT NOT NULL,
         FOREIGN KEY (drive_folder_id) REFERENCES folders(drive_folder_id)
       );
@@ -107,7 +113,7 @@ export async function createIndexSqlite(input: {
 
     db.run(
       `INSERT OR REPLACE INTO app_meta (key, value) VALUES
-        ('schema_version', '1'),
+        ('schema_version', '2'),
         ('generated_at', ?),
         ('app_name', 'drive-paper-library');`,
       [new Date().toISOString()]
@@ -134,8 +140,8 @@ export async function createIndexSqlite(input: {
       db.run(
         `INSERT INTO papers (
           drive_file_id, drive_folder_id, title, file_name, path, mime_type,
-          modified_time, created_time, size_bytes, web_view_link, indexed_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          modified_time, created_time, size_bytes, web_view_link, access_level, indexed_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           paper.driveFileId,
           paper.driveFolderId,
@@ -147,6 +153,7 @@ export async function createIndexSqlite(input: {
           paper.createdTime ?? null,
           paper.sizeBytes ?? null,
           paper.webViewLink ?? null,
+          paper.accessLevel,
           paper.indexedAt
         ]
       );
@@ -181,6 +188,7 @@ export async function createIndexSqlite(input: {
 export async function parseIndexSqlite(bytes: Uint8Array): Promise<LibraryIndexData> {
   return withDb((db) => {
     try {
+      const hasAccessLevel = hasColumn(db, "papers", "access_level");
       const folderRows = queryRows(
         db,
         `
@@ -194,7 +202,9 @@ export async function parseIndexSqlite(bytes: Uint8Array): Promise<LibraryIndexD
         db,
         `
         SELECT drive_file_id, drive_folder_id, title, file_name, path, mime_type,
-               modified_time, created_time, size_bytes, web_view_link, indexed_at
+               modified_time, created_time, size_bytes, web_view_link,
+               ${hasAccessLevel ? "access_level" : "'restricted' AS access_level"},
+               indexed_at
         FROM papers
         ORDER BY title
       `
@@ -221,6 +231,10 @@ export async function parseIndexSqlite(bytes: Uint8Array): Promise<LibraryIndexD
         createdTime: row.created_time ? String(row.created_time) : undefined,
         sizeBytes: row.size_bytes ? Number(row.size_bytes) : undefined,
         webViewLink: row.web_view_link ? String(row.web_view_link) : undefined,
+        accessLevel:
+          row.access_level === "anyone_with_link" || row.access_level === "public_on_web"
+            ? row.access_level
+            : "restricted",
         indexedAt: String(row.indexed_at)
       }));
 
@@ -246,13 +260,16 @@ export async function searchIndexSqlite(
 
   return withDb((db) => {
     const isFtsEnabled = getSingleStringValue(db, "fts_enabled") === "1";
+    const hasAccessLevel = hasColumn(db, "papers", "access_level");
 
     const rows = isFtsEnabled
       ? queryRows(
           db,
           `
           SELECT p.drive_file_id, p.drive_folder_id, p.title, p.file_name, p.path, p.mime_type,
-                 p.modified_time, p.created_time, p.size_bytes, p.web_view_link, p.indexed_at
+                 p.modified_time, p.created_time, p.size_bytes, p.web_view_link,
+                 ${hasAccessLevel ? "p.access_level" : "'restricted'"} AS access_level,
+                 p.indexed_at
           FROM papers_fts f
           JOIN papers p ON p.drive_file_id = f.drive_file_id
           WHERE papers_fts MATCH ?
@@ -264,7 +281,9 @@ export async function searchIndexSqlite(
           db,
           `
           SELECT drive_file_id, drive_folder_id, title, file_name, path, mime_type,
-                 modified_time, created_time, size_bytes, web_view_link, indexed_at
+                 modified_time, created_time, size_bytes, web_view_link,
+                 ${hasAccessLevel ? "access_level" : "'restricted'"} AS access_level,
+                 indexed_at
           FROM papers
           WHERE lower(title) LIKE ?
              OR lower(file_name) LIKE ?
@@ -285,6 +304,10 @@ export async function searchIndexSqlite(
       createdTime: row.created_time ? String(row.created_time) : undefined,
       sizeBytes: row.size_bytes ? Number(row.size_bytes) : undefined,
       webViewLink: row.web_view_link ? String(row.web_view_link) : undefined,
+      accessLevel:
+        row.access_level === "anyone_with_link" || row.access_level === "public_on_web"
+          ? row.access_level
+          : "restricted",
       indexedAt: String(row.indexed_at)
     }));
   }, bytes);

@@ -6,7 +6,7 @@ import { PaperTable } from "@/components/paper-table";
 
 describe("PaperTable", () => {
   it("renders empty state", () => {
-    render(<PaperTable canEdit={false} libraryId="lib" papers={[]} />);
+    render(<PaperTable canEdit={false} papers={[]} viewMode="list" />);
     expect(screen.getByText("No papers match this folder yet.")).toBeInTheDocument();
   });
 
@@ -14,22 +14,26 @@ describe("PaperTable", () => {
     render(
       <PaperTable
         canEdit
-        libraryId="lib"
         papers={[
           {
             driveFileId: "paper-1",
             driveFolderId: "lib",
+            libraryId: "lib",
+            libraryName: "Library",
             title: "Paper",
             fileName: "Paper.pdf",
             path: "/Paper.pdf",
             mimeType: "application/pdf",
+            accessLevel: "restricted",
             indexedAt: "2026-01-01T00:00:00.000Z"
           }
         ]}
+        showLibraryName
+        viewMode="list"
       />
     );
 
     expect(screen.getByText("Paper")).toBeInTheDocument();
-    expect(screen.getByText("PDF Document")).toBeInTheDocument();
+    expect(screen.getAllByText("Library").length).toBeGreaterThan(0);
   });
 });

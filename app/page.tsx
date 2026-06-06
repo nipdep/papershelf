@@ -5,7 +5,7 @@ import { notFound, redirect } from "next/navigation";
 import { unstable_rethrow } from "next/dist/client/components/unstable-rethrow";
 
 import { auth } from "@/auth";
-import { SignInButton } from "@/components/auth-buttons";
+import { ConnectDriveButton } from "@/components/auth-buttons";
 import { FolderTree } from "@/components/folder-tree";
 import { PaperTable } from "@/components/paper-table";
 import { ViewModeSwitcher } from "@/components/view-mode-switcher";
@@ -72,10 +72,9 @@ export default async function HomePage({
   const folderId = params?.folder;
   const selectedPaperId = params?.paper;
   const globalQuery = params?.q?.trim().toLowerCase() ?? "";
-  const hasDirectPublicTarget = Boolean(folderId || selectedPaperId);
-  const canTryPublicBrowsing = isConfiguredForPublicDriveBrowsing() && hasDirectPublicTarget;
+  const canBrowsePublicLibraries = isConfiguredForPublicDriveBrowsing();
 
-  if (!isConfiguredForGoogleAuth() && !canTryPublicBrowsing) {
+  if (!isConfiguredForGoogleAuth() && !canBrowsePublicLibraries) {
     return (
       <main className="workspace hero-center">
         <section className="card hero-panel glass-card stack">
@@ -94,9 +93,9 @@ export default async function HomePage({
 
   const hasValidSession = Boolean(session?.user?.email && !session?.user?.authError);
   const signedInSession = hasValidSession ? session! : null;
-  const canBrowsePublicLibraries = isConfiguredForPublicDriveBrowsing();
+  const canManageLibraries = Boolean(signedInSession?.user.hasDriveAccess);
 
-  if (!hasValidSession && !canTryPublicBrowsing) {
+  if (!hasValidSession && !canBrowsePublicLibraries) {
     return (
       <main className="workspace hero-center">
         <section className="card hero-panel glass-card stack">
@@ -109,14 +108,14 @@ export default async function HomePage({
             </p>
           </div>
           <div className="hero-actions">
-            <SignInButton />
+            <ConnectDriveButton label="Connect Google Drive" redirectTo="/" />
           </div>
         </section>
       </main>
     );
   }
 
-  if (session?.user?.authError && !canTryPublicBrowsing) {
+  if (session?.user?.authError && !canBrowsePublicLibraries) {
     return (
       <main className="workspace hero-center">
         <section className="card hero-panel glass-card stack">
@@ -126,7 +125,7 @@ export default async function HomePage({
             <p>Sign in again to reconnect Papershelf to your Drive libraries.</p>
           </div>
           <div className="hero-actions">
-            <SignInButton />
+            <ConnectDriveButton label="Reconnect Google Drive" redirectTo="/" />
           </div>
         </section>
       </main>
@@ -167,7 +166,7 @@ export default async function HomePage({
     unstable_rethrow(error);
     const appError = asAppError(error);
     if (appError.code === "NOT_AUTHENTICATED") {
-      if (canTryPublicBrowsing) {
+      if (canBrowsePublicLibraries) {
         notFound();
       }
       redirect("/");
@@ -177,7 +176,7 @@ export default async function HomePage({
 
   if (
     !hasValidSession &&
-    hasDirectPublicTarget &&
+    (folderId || selectedPaperId) &&
     !explorer.folders.some((folder) => folder.driveFolderId === folderId) &&
     !explorer.papers.some((paper) => paper.driveFileId === selectedPaperId)
   ) {
@@ -267,6 +266,26 @@ export default async function HomePage({
 
   return (
     <main className="workspace workspace-finder">
+      {!canManageLibraries ? (
+        <section className="card glass-card stack">
+          <div className="title-cluster">
+            <p className="eyebrow">
+              {session?.user?.authError ? "Reconnect Google Drive" : "View more with Google"}
+            </p>
+            <h2>Public papers are open below. Connect Google Drive to view every paper you can access.</h2>
+            <p className="muted">
+              Papers shared as <strong>Anyone with the link</strong> show up here without a login.
+              To get the full library view for your Google account, connect Drive from this panel.
+            </p>
+          </div>
+          <div className="hero-actions">
+            <ConnectDriveButton
+              label={session?.user?.authError ? "Reconnect Google Drive" : "Log in with Google"}
+              redirectTo="/"
+            />
+          </div>
+        </section>
+      ) : null}
       <section className={`finder-layout ${layoutMode === "list" ? "finder-layout-list" : ""}`}>
         <aside className="finder-sidebar">
           <div className="pane-header finder-sidebar-header">
@@ -275,16 +294,16 @@ export default async function HomePage({
             </div>
           </div>
           <FolderTree
-            canEdit={hasValidSession}
-            createFolderAction={hasValidSession ? createFolderAction : undefined}
+            canEdit={canManageLibraries}
+            createFolderAction={canManageLibraries ? createFolderAction : undefined}
             currentFolderId={folderId}
             folders={explorer.folders}
             pageMode="root"
             query={globalQuery}
-            rebuildAction={hasValidSession ? rebuildAction : undefined}
-            trashFolderAction={hasValidSession ? trashFolderAction : undefined}
-            updateFolderAction={hasValidSession ? updateFolderAction : undefined}
-            uploadAction={hasValidSession ? uploadAction : undefined}
+            rebuildAction={canManageLibraries ? rebuildAction : undefined}
+            trashFolderAction={canManageLibraries ? trashFolderAction : undefined}
+            updateFolderAction={canManageLibraries ? updateFolderAction : undefined}
+            uploadAction={canManageLibraries ? uploadAction : undefined}
           />
         </aside>
 

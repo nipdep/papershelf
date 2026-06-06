@@ -21,6 +21,7 @@ async function main() {
         fileName: "Attention Is All You Need.pdf",
         path: "/Attention Is All You Need.pdf",
         mimeType: "application/pdf",
+        accessLevel: "anyone_with_link",
         indexedAt: "2026-01-01T00:00:00.000Z"
       }
     ]
@@ -31,6 +32,7 @@ async function main() {
 
   assert.equal(parsed.folders.length, 1);
   assert.equal(parsed.papers[0]?.title, "Attention Is All You Need");
+  assert.equal(parsed.papers[0]?.accessLevel, "anyone_with_link");
   assert.equal(results[0]?.driveFileId, "paper-1");
   console.log("index-sqlite node test passed");
 }

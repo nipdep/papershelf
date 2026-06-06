@@ -19,7 +19,8 @@ const DRIVE_FIELDS = [
   "createdTime",
   "size",
   "webViewLink",
-  "capabilities(canEdit,canAddChildren,canDelete,canTrash,canRename,canMoveItemWithinDrive)"
+  "capabilities(canEdit,canAddChildren,canDelete,canTrash,canRename,canMoveItemWithinDrive)",
+  "permissions(type,role,allowFileDiscovery)"
 ].join(",");
 
 const APP_DATA_CONFIG_NAME = "papershelf-config.json";
@@ -136,7 +137,12 @@ function mapDriveFile(file?: drive_v3.Schema$File | null): DriveItem {
           canMoveItemWithinDrive:
             file.capabilities.canMoveItemWithinDrive ?? undefined
         }
-      : undefined
+      : undefined,
+    permissions: file.permissions?.map((permission) => ({
+      type: permission.type ?? undefined,
+      role: permission.role ?? undefined,
+      allowFileDiscovery: permission.allowFileDiscovery ?? undefined
+    }))
   };
 }
 

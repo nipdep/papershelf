@@ -1,5 +1,5 @@
 import { DriveClient } from "@/lib/google/drive";
-import { IndexedFolder, IndexedPaper } from "@/lib/models";
+import { IndexedFolder, IndexedPaper, PaperAccessLevel } from "@/lib/models";
 import {
   buildFolderPath,
   buildPaperPath,
@@ -11,6 +11,22 @@ import {
 export interface ScanResult {
   folders: IndexedFolder[];
   papers: IndexedPaper[];
+}
+
+function getPaperAccessLevel(permissions?: Array<{
+  type?: string;
+  role?: string;
+  allowFileDiscovery?: boolean;
+}>): PaperAccessLevel {
+  const anyonePermission = permissions?.find(
+    (permission) => permission.type === "anyone" && permission.role !== "none"
+  );
+
+  if (!anyonePermission) {
+    return "restricted";
+  }
+
+  return anyonePermission.allowFileDiscovery ? "public_on_web" : "anyone_with_link";
 }
 
 export async function scanDriveLibrary(
@@ -85,6 +101,7 @@ export async function scanDriveLibrary(
           createdTime: child.createdTime,
           sizeBytes: child.size,
           webViewLink: child.webViewLink,
+          accessLevel: getPaperAccessLevel(child.permissions),
           indexedAt
         });
       }

@@ -2,19 +2,37 @@
 
 import { useEffect } from "react";
 
-export function AutoIndexTrigger({ enabled }: { enabled: boolean }) {
+export function AutoIndexTrigger({
+  enabled,
+  cacheKey
+}: {
+  enabled: boolean;
+  cacheKey?: string;
+}) {
   useEffect(() => {
     if (!enabled) {
       return;
+    }
+
+    const storageKey = `papershelf:auto-index:${cacheKey ?? "default"}`;
+    if (typeof window !== "undefined" && window.sessionStorage.getItem(storageKey) === "done") {
+      return;
+    }
+
+    if (typeof window !== "undefined") {
+      window.sessionStorage.setItem(storageKey, "done");
     }
 
     void fetch("/api/indexing/rebuild-all", {
       method: "POST",
       credentials: "same-origin"
     }).catch(() => {
-      // Keep the UI usable even if background indexing fails.
+      // Let future navigations retry if background indexing fails.
+      if (typeof window !== "undefined") {
+        window.sessionStorage.removeItem(storageKey);
+      }
     });
-  }, [enabled]);
+  }, [cacheKey, enabled]);
 
   return null;
 }

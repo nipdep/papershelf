@@ -7,6 +7,14 @@ export interface DriveCapabilities {
   canMoveItemWithinDrive?: boolean;
 }
 
+export interface DrivePermission {
+  type?: string;
+  role?: string;
+  allowFileDiscovery?: boolean;
+}
+
+export type PaperAccessLevel = "restricted" | "anyone_with_link" | "public_on_web";
+
 export interface DriveItem {
   id: string;
   name: string;
@@ -17,6 +25,7 @@ export interface DriveItem {
   size?: number;
   webViewLink?: string;
   capabilities?: DriveCapabilities;
+  permissions?: DrivePermission[];
 }
 
 export interface IndexedFolder {
@@ -40,6 +49,7 @@ export interface IndexedPaper {
   createdTime?: string;
   sizeBytes?: number;
   webViewLink?: string;
+  accessLevel: PaperAccessLevel;
   indexedAt: string;
 }
 

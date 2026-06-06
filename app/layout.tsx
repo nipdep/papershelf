@@ -60,7 +60,10 @@ export default async function RootLayout({
   return (
     <html lang="en">
       <body>
-        <AutoIndexTrigger enabled={Boolean(session?.user?.hasDriveAccess)} />
+        <AutoIndexTrigger
+          cacheKey={session?.user?.email ?? undefined}
+          enabled={Boolean(session?.user?.hasDriveAccess)}
+        />
         <div className="app-shell">
           <div className="app-frame">
             <header className="frame-header">

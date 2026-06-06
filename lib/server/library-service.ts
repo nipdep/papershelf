@@ -21,7 +21,8 @@ import {
   ExplorerPaper,
   LibraryConfig,
   LibraryIndexData,
-  LibrarySummary
+  LibrarySummary,
+  PaperAccessLevel
 } from "@/lib/models";
 import { parseDriveFolderInput } from "@/lib/utils/drive";
 
@@ -33,10 +34,39 @@ export async function createPublicDriveClient(): Promise<DriveClient> {
   return getPublicDriveClient();
 }
 
-async function createBrowsingDriveClient(session: Session): Promise<DriveClient> {
-  return session.user.hasDriveAccess
+async function createBrowsingDriveClient(session: Session | null): Promise<DriveClient> {
+  return session?.user.hasDriveAccess
     ? createSessionDriveClient(session)
     : createPublicDriveClient();
+}
+
+function isPubliclyAccessiblePaper(accessLevel: PaperAccessLevel): boolean {
+  return accessLevel === "anyone_with_link" || accessLevel === "public_on_web";
+}
+
+function filterIndexForPublicAccess(index: LibraryIndexData): LibraryIndexData | null {
+  const papers = index.papers.filter((paper) => isPubliclyAccessiblePaper(paper.accessLevel));
+  if (papers.length === 0) {
+    return null;
+  }
+
+  const folderById = new Map(index.folders.map((folder) => [folder.driveFolderId, folder]));
+  const visibleFolderIds = new Set<string>();
+
+  for (const paper of papers) {
+    let cursor = folderById.get(paper.driveFolderId);
+    while (cursor && !visibleFolderIds.has(cursor.driveFolderId)) {
+      visibleFolderIds.add(cursor.driveFolderId);
+      cursor = cursor.parentFolderId ? folderById.get(cursor.parentFolderId) : undefined;
+    }
+  }
+
+  const folders = index.folders.filter((folder) => visibleFolderIds.has(folder.driveFolderId));
+  return {
+    ...index,
+    folders,
+    papers
+  };
 }
 
 async function summarizeLibrary(
@@ -201,7 +231,7 @@ export async function rebuildAccessibleLibraryIndexes(session: Session) {
 }
 
 export async function getLibraryIndex(
-  session: Session,
+  session: Session | null,
   libraryId: string
 ): Promise<LibraryIndexData> {
   const driveClient = await createBrowsingDriveClient(session);
@@ -211,11 +241,16 @@ export async function getLibraryIndex(
     throw new AppError("INDEX_NOT_FOUND", "This library has not been indexed yet.", 404);
   }
 
-  return parseIndexSqlite(bytes);
+  const index = await parseIndexSqlite(bytes);
+  return session?.user.hasDriveAccess ? index : filterIndexForPublicAccess(index) ?? {
+    ...index,
+    folders: [],
+    papers: []
+  };
 }
 
 export async function searchLibraryIndex(
-  session: Session,
+  session: Session | null,
   libraryId: string,
   query: string
 ) {
@@ -226,7 +261,10 @@ export async function searchLibraryIndex(
     throw new AppError("INDEX_NOT_FOUND", "This library has no index yet.", 404);
   }
 
-  return searchIndexSqlite(bytes, query);
+  const results = await searchIndexSqlite(bytes, query);
+  return session?.user.hasDriveAccess
+    ? results
+    : results.filter((paper) => isPubliclyAccessiblePaper(paper.accessLevel));
 }
 
 export async function createSubfolder(
@@ -427,16 +465,30 @@ export async function loadExplorerDataForPublicAccess(): Promise<{
 }> {
   const driveClient = await createPublicDriveClient();
   const libraries = await listPublicLibraries();
-  return loadExplorerDataFromLibraries(
-    libraries,
-    async (library) => {
+  const indexed = await Promise.all(
+    libraries.map(async (library) => {
       try {
         const bytes = await driveClient.downloadIndexSqlite(library.driveFolderId);
-        return bytes ? parseIndexSqlite(bytes) : null;
+        if (!bytes) {
+          return null;
+        }
+
+        const index = filterIndexForPublicAccess(await parseIndexSqlite(bytes));
+        if (!index) {
+          return null;
+        }
+
+        return { library, index };
       } catch {
         return null;
       }
-    }
+    })
+  );
+
+  return buildExplorerData(
+    indexed.filter((entry): entry is { library: LibrarySummary; index: LibraryIndexData } =>
+      Boolean(entry)
+    )
   );
 }
 
@@ -455,6 +507,16 @@ async function loadExplorerDataFromLibraries(
     }))
   );
 
+  return buildExplorerData(indexed);
+}
+
+function buildExplorerData(
+  indexed: Array<{ library: LibrarySummary; index: LibraryIndexData | null }>
+): {
+  libraries: LibrarySummary[];
+  folders: ExplorerFolder[];
+  papers: ExplorerPaper[];
+} {
   const folders: ExplorerFolder[] = indexed.flatMap(({ library, index }) => {
     if (!index) {
       return [
@@ -489,5 +551,5 @@ async function loadExplorerDataFromLibraries(
       : []
   );
 
-  return { libraries, folders, papers };
+  return { libraries: indexed.map(({ library }) => library), folders, papers };
 }
