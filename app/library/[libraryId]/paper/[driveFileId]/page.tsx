@@ -27,7 +27,7 @@ export default async function PaperPage({
   }
   const { driveFileId } = await params;
   try {
-    const driveClient = session
+    const driveClient = session?.user.hasDriveAccess
       ? await createSessionDriveClient(session)
       : isConfiguredForPublicDriveBrowsing()
         ? await createPublicDriveClient()

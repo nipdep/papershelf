@@ -1,7 +1,12 @@
 import { describe, expect, it } from "vitest";
 
 import { AppError } from "@/lib/errors";
-import { canEditFromCapabilities, requireOwner, requireSession } from "@/lib/server/authz";
+import {
+  canEditFromCapabilities,
+  requireDriveAccess,
+  requireOwner,
+  requireSession
+} from "@/lib/server/authz";
 
 describe("authz helpers", () => {
   it("requires a session", () => {
@@ -14,6 +19,7 @@ describe("authz helpers", () => {
         user: {
           email: "user@example.com",
           isOwner: true,
+          hasDriveAccess: false,
           authError: "RefreshAccessTokenError"
         }
       } as any)
@@ -25,7 +31,20 @@ describe("authz helpers", () => {
       requireOwner({
         user: {
           email: "user@example.com",
-          isOwner: false
+          isOwner: false,
+          hasDriveAccess: false
+        }
+      } as any)
+    ).toThrow(AppError);
+  });
+
+  it("requires drive access for Drive-backed actions", () => {
+    expect(() =>
+      requireDriveAccess({
+        user: {
+          email: "user@example.com",
+          isOwner: true,
+          hasDriveAccess: false
         }
       } as any)
     ).toThrow(AppError);

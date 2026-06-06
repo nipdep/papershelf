@@ -2,6 +2,7 @@ import NextAuth from "next-auth";
 import Google from "next-auth/providers/google";
 import { JWT } from "next-auth/jwt";
 
+import { createGoogleScopeString, GOOGLE_BASE_SCOPES, hasDriveScope } from "@/lib/google/auth";
 import { getAuthSecret, isConfiguredForGoogleAuth, isOwnerEmail } from "@/lib/env";
 
 const providers = isConfiguredForGoogleAuth()
@@ -11,16 +12,7 @@ const providers = isConfiguredForGoogleAuth()
         clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
         authorization: {
           params: {
-            prompt: "consent",
-            access_type: "offline",
-            response_type: "code",
-            scope: [
-              "openid",
-              "email",
-              "profile",
-              "https://www.googleapis.com/auth/drive",
-              "https://www.googleapis.com/auth/drive.appdata"
-            ].join(" ")
+            scope: createGoogleScopeString(GOOGLE_BASE_SCOPES)
           }
         }
       })
@@ -93,14 +85,26 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   },
   callbacks: {
     async jwt({ token, account, profile }) {
-      if (account?.access_token) {
-        token.accessToken = account.access_token;
-        token.accessTokenExpiresAt = account.expires_at
-          ? account.expires_at * 1000
-          : Date.now() + 60 * 60 * 1000;
-        token.refreshToken = account.refresh_token ?? token.refreshToken;
-        token.authError = undefined;
+      if (account) {
+        const grantedScope = typeof account.scope === "string" ? account.scope : undefined;
+        token.hasDriveAccess = hasDriveScope(grantedScope);
+        token.grantedScope = grantedScope;
+
+        if (account.access_token && token.hasDriveAccess) {
+          token.accessToken = account.access_token;
+          token.accessTokenExpiresAt = account.expires_at
+            ? account.expires_at * 1000
+            : Date.now() + 60 * 60 * 1000;
+          token.refreshToken = account.refresh_token ?? token.refreshToken;
+          token.authError = undefined;
+        } else {
+          token.accessToken = undefined;
+          token.accessTokenExpiresAt = undefined;
+          token.refreshToken = undefined;
+          token.authError = undefined;
+        }
       } else if (
+        token.hasDriveAccess &&
         typeof token.accessTokenExpiresAt === "number" &&
         Date.now() >= token.accessTokenExpiresAt - 60_000
       ) {
@@ -117,6 +121,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       if (session.user) {
         session.user.email = token.email ?? session.user.email ?? "";
         session.user.isOwner = Boolean(token.isOwner);
+        session.user.hasDriveAccess = Boolean(token.hasDriveAccess);
         session.user.accessToken =
           typeof token.accessToken === "string" ? token.accessToken : undefined;
         session.user.authError = token.authError;

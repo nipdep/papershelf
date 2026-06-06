@@ -27,6 +27,19 @@ export function requireOwner(session: Session | null) {
   return currentSession;
 }
 
+export function requireDriveAccess(session: Session | null) {
+  const currentSession = requireSession(session);
+  if (!currentSession.user.hasDriveAccess || !currentSession.user.accessToken) {
+    throw new AppError(
+      "DRIVE_ACCESS_DENIED",
+      "Google Drive access has not been granted for this session.",
+      403
+    );
+  }
+
+  return currentSession;
+}
+
 export function canEditFromCapabilities(
   capabilities?: {
     canEdit?: boolean;

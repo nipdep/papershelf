@@ -8,6 +8,7 @@ import { Session } from "next-auth";
 import { AppError } from "@/lib/errors";
 import { getGoogleApiKey } from "@/lib/env";
 import { DriveItem } from "@/lib/models";
+import { requireDriveAccess } from "@/lib/server/authz";
 
 const DRIVE_FIELDS = [
   "id",
@@ -216,14 +217,7 @@ async function getAppConfigFile(drive: drive_v3.Drive): Promise<DriveItem | null
 }
 
 export async function getDriveClientForSession(session: Session): Promise<DriveClient> {
-  const accessToken = session.user.accessToken;
-  if (!accessToken) {
-    throw new AppError(
-      "NOT_AUTHENTICATED",
-      "Google access token missing from session. Please sign in again.",
-      401
-    );
-  }
+  const accessToken = requireDriveAccess(session).user.accessToken!;
 
   const auth = new google.auth.OAuth2();
   auth.setCredentials({ access_token: accessToken });

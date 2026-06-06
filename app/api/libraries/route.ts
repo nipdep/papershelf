@@ -1,14 +1,20 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { auth } from "@/auth";
-import { addLibraryForOwner, listLibrariesForSession } from "@/lib/server/library-service";
+import {
+  addLibraryForOwner,
+  listLibrariesForSession,
+  listPublicLibraries
+} from "@/lib/server/library-service";
 import { requireOwner, requireSession } from "@/lib/server/authz";
 import { jsonError } from "@/lib/server/http";
 
 export async function GET() {
   try {
     const session = requireSession(await auth());
-    const libraries = await listLibrariesForSession(session);
+    const libraries = session.user.hasDriveAccess
+      ? await listLibrariesForSession(session)
+      : await listPublicLibraries();
     return NextResponse.json({ libraries });
   } catch (error) {
     return jsonError(error);

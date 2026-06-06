@@ -4,7 +4,9 @@ import { redirect } from "next/navigation";
 import { unstable_rethrow } from "next/dist/client/components/unstable-rethrow";
 
 import { auth } from "@/auth";
+import { ConnectDriveButton } from "@/components/auth-buttons";
 import { asAppError } from "@/lib/errors";
+import type { LibrarySummary } from "@/lib/models";
 import {
   addLibraryForOwner,
   listLibrariesForSession,
@@ -26,16 +28,18 @@ export default async function AdminPage() {
     throw appError;
   }
 
-  let libraries;
-  try {
-    libraries = await listLibrariesForSession(session);
-  } catch (error) {
-    unstable_rethrow(error);
-    const appError = asAppError(error);
-    if (appError.code === "NOT_AUTHENTICATED") {
-      redirect("/");
+  let libraries: LibrarySummary[] = [];
+  if (session.user.hasDriveAccess) {
+    try {
+      libraries = await listLibrariesForSession(session);
+    } catch (error) {
+      unstable_rethrow(error);
+      const appError = asAppError(error);
+      if (appError.code === "NOT_AUTHENTICATED") {
+        redirect("/");
+      }
+      throw appError;
     }
-    throw appError;
   }
 
   async function addLibraryAction(formData: FormData) {
@@ -79,6 +83,26 @@ export default async function AdminPage() {
           Back to libraries
         </Link>
       </header>
+
+      {!session.user.hasDriveAccess ? (
+        <section className="card glass-card stack">
+          <div className="title-cluster">
+            <p className="eyebrow">Drive access required</p>
+            <h2>Connect Google Drive for owner indexing</h2>
+            <p className="muted">
+              {session.user.isOwner
+                ? "Regular viewers can browse from published index.sqlite files without Drive permissions. To add libraries, rebuild indexes, or manage folders, connect your owner account to Google Drive."
+                : "This workspace now serves published index.sqlite files to viewers. Library administration still requires the owner to connect Google Drive."}
+            </p>
+          </div>
+          <div className="hero-actions">
+            {session.user.isOwner ? <ConnectDriveButton /> : null}
+            <Link className="button button-secondary" href="/">
+              Browse libraries
+            </Link>
+          </div>
+        </section>
+      ) : null}
 
       <div className="settings-grid">
         <section className="section-panel">
@@ -143,7 +167,7 @@ export default async function AdminPage() {
           </section>
         </section>
 
-        {session.user.isOwner ? (
+        {session.user.isOwner && session.user.hasDriveAccess ? (
           <aside className="section-panel">
             <section className="card">
               <div className="title-cluster">

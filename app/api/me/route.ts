@@ -11,7 +11,8 @@ export async function GET() {
       email: session.user.email,
       name: session.user.name,
       image: session.user.image,
-      isOwner: session.user.isOwner
+      isOwner: session.user.isOwner,
+      hasDriveAccess: session.user.hasDriveAccess
     });
   } catch (error) {
     return jsonError(error);

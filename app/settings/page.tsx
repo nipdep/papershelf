@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { unstable_rethrow } from "next/dist/client/components/unstable-rethrow";
 
 import { auth } from "@/auth";
+import { ConnectDriveButton } from "@/components/auth-buttons";
 import { asAppError } from "@/lib/errors";
 import { requireSession } from "@/lib/server/authz";
 
@@ -52,12 +53,20 @@ export default async function SettingsPage() {
               <div className="title-cluster">
                 <p className="eyebrow">Admin</p>
                 <h2>Library administration</h2>
-                <p>Add libraries, rebuild indexes, and manage configured Drive roots.</p>
+                <p>
+                  {session.user.hasDriveAccess
+                    ? "Add libraries, rebuild indexes, and manage configured Drive roots."
+                    : "Connect Google Drive to add libraries, rebuild indexes, and manage configured Drive roots."}
+                </p>
               </div>
               <div className="card-actions">
-                <Link className="button button-secondary" href="/admin">
-                  Open library admin
-                </Link>
+                {session.user.hasDriveAccess ? (
+                  <Link className="button button-secondary" href="/admin">
+                    Open library admin
+                  </Link>
+                ) : (
+                  <ConnectDriveButton />
+                )}
               </div>
             </article>
           ) : null}
@@ -66,7 +75,13 @@ export default async function SettingsPage() {
             <div className="title-cluster">
               <p className="eyebrow">Account</p>
               <h2>{session.user.email}</h2>
-              <p>{session.user.isOwner ? "Owner access enabled." : "Standard library access."}</p>
+              <p>
+                {session.user.isOwner
+                  ? session.user.hasDriveAccess
+                    ? "Owner access enabled with Google Drive connected."
+                    : "Owner account detected. Google Drive is not connected for this session."
+                  : "Standard library access."}
+              </p>
             </div>
           </article>
         </section>

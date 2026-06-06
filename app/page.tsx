@@ -134,7 +134,7 @@ export default async function HomePage({
 
   let explorer;
   try {
-    if (signedInSession) {
+    if (signedInSession?.user.hasDriveAccess) {
       explorer = await loadExplorerDataForSession(signedInSession);
     } else {
       explorer = await loadExplorerDataForPublicAccess();

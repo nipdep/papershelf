@@ -33,6 +33,12 @@ export async function createPublicDriveClient(): Promise<DriveClient> {
   return getPublicDriveClient();
 }
 
+async function createBrowsingDriveClient(session: Session): Promise<DriveClient> {
+  return session.user.hasDriveAccess
+    ? createSessionDriveClient(session)
+    : createPublicDriveClient();
+}
+
 async function summarizeLibrary(
   driveClient: DriveClient,
   library: LibraryConfig["libraries"][number]
@@ -198,7 +204,7 @@ export async function getLibraryIndex(
   session: Session,
   libraryId: string
 ): Promise<LibraryIndexData> {
-  const driveClient = await createSessionDriveClient(session);
+  const driveClient = await createBrowsingDriveClient(session);
   await driveClient.getFileMetadata(libraryId);
   const bytes = await driveClient.downloadIndexSqlite(libraryId);
   if (!bytes) {
@@ -213,7 +219,7 @@ export async function searchLibraryIndex(
   libraryId: string,
   query: string
 ) {
-  const driveClient = await createSessionDriveClient(session);
+  const driveClient = await createBrowsingDriveClient(session);
   await driveClient.getFileMetadata(libraryId);
   const bytes = await driveClient.downloadIndexSqlite(libraryId);
   if (!bytes) {
@@ -397,6 +403,10 @@ export async function loadExplorerDataForSession(session: Session): Promise<{
   folders: ExplorerFolder[];
   papers: ExplorerPaper[];
 }> {
+  if (!session.user.hasDriveAccess) {
+    return loadExplorerDataForPublicAccess();
+  }
+
   const libraries = (await listLibrariesForSession(session)).filter((library) => library.accessible);
   return loadExplorerDataFromLibraries(
     libraries,

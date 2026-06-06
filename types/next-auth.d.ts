@@ -6,6 +6,7 @@ declare module "next-auth" {
     user: DefaultSession["user"] & {
       email: string;
       isOwner: boolean;
+      hasDriveAccess: boolean;
       accessToken?: string;
       authError?: "RefreshAccessTokenError";
     };
@@ -19,5 +20,7 @@ declare module "next-auth/jwt" {
     refreshToken?: string;
     authError?: "RefreshAccessTokenError";
     isOwner?: boolean;
+    hasDriveAccess?: boolean;
+    grantedScope?: string;
   }
 }

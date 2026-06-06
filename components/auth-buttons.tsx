@@ -1,4 +1,5 @@
 import { isConfiguredForGoogleAuth } from "@/lib/env";
+import { createDriveAuthorizationParams } from "@/lib/google/auth";
 import { signIn, signOut } from "@/auth";
 
 export function SignInButton() {
@@ -19,6 +20,35 @@ export function SignInButton() {
     >
       <button className="button" type="submit">
         Sign in with Google
+      </button>
+    </form>
+  );
+}
+
+export function ConnectDriveButton({
+  redirectTo = "/admin",
+  label = "Connect Google Drive"
+}: {
+  redirectTo?: string;
+  label?: string;
+}) {
+  if (!isConfiguredForGoogleAuth()) {
+    return (
+      <button className="button button-secondary" disabled>
+        Google auth not configured
+      </button>
+    );
+  }
+
+  return (
+    <form
+      action={async () => {
+        "use server";
+        await signIn("google", { redirectTo }, createDriveAuthorizationParams());
+      }}
+    >
+      <button className="button" type="submit">
+        {label}
       </button>
     </form>
   );
