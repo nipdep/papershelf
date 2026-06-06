@@ -94,6 +94,7 @@ export default async function HomePage({
 
   const hasValidSession = Boolean(session?.user?.email && !session?.user?.authError);
   const signedInSession = hasValidSession ? session! : null;
+  const canBrowsePublicLibraries = isConfiguredForPublicDriveBrowsing();
 
   if (!hasValidSession && !canTryPublicBrowsing) {
     return (
@@ -126,6 +127,29 @@ export default async function HomePage({
           </div>
           <div className="hero-actions">
             <SignInButton />
+          </div>
+        </section>
+      </main>
+    );
+  }
+
+  if (signedInSession && !signedInSession.user.hasDriveAccess && !canBrowsePublicLibraries) {
+    return (
+      <main className="workspace hero-center">
+        <section className="card hero-panel glass-card stack">
+          <div className="title-cluster">
+            <p className="eyebrow">Library unavailable</p>
+            <h1>This session can sign in, but it cannot load library data yet.</h1>
+            <p>
+              Viewer mode needs public index access configured for this app. Otherwise,
+              the owner needs to connect Google Drive and publish library indexes before
+              viewers can browse.
+            </p>
+          </div>
+          <div className="hero-actions">
+            <Link className="button button-secondary" href="/settings">
+              Open settings
+            </Link>
           </div>
         </section>
       </main>
