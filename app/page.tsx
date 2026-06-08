@@ -5,7 +5,7 @@ import { notFound, redirect } from "next/navigation";
 import { unstable_rethrow } from "next/dist/client/components/unstable-rethrow";
 
 import { auth } from "@/auth";
-import { ConnectDriveButton, SignInButton } from "@/components/auth-buttons";
+import { ConnectDriveButton } from "@/components/auth-buttons";
 import { FolderTree } from "@/components/folder-tree";
 import { PaperTable } from "@/components/paper-table";
 import { ViewModeSwitcher } from "@/components/view-mode-switcher";
@@ -275,13 +275,13 @@ export default async function HomePage({
                   ? "Reconnect Google Drive"
                   : "Connect Google Drive"
                 : session?.user?.email
-                  ? "Signed in"
-                  : "Sign in with Google"}
+                  ? "See privately shared papers"
+                  : "See privately shared papers"}
             </p>
             <h2>
               {session?.user?.isOwner
                 ? "Connect Google Drive to rebuild and publish library indexes."
-                : "Browse published papers below with a plain Google sign-in."}
+                : "Browse public papers below, then connect Google Drive to unlock papers shared just with you."}
             </h2>
             <p className="muted">
               {session?.user?.isOwner ? (
@@ -290,13 +290,14 @@ export default async function HomePage({
                 </>
               ) : (
                 <>
-                  Papers shared as <strong>Anyone with the link</strong> appear below without Drive
-                  permission prompts. Viewer-specific indexes appear after the owner publishes them.
+                  Papers shared as <strong>Anyone with the link</strong> appear below right away.
+                  After you connect Google Drive, Papershelf can also merge in papers and folders
+                  shared privately with your Google account.
                 </>
               )}
             </p>
           </div>
-          {!session?.user?.email || session?.user?.isOwner ? (
+          {!session?.user?.isOwner ? (
             <div className="hero-actions">
               {session?.user?.isOwner ? (
                 <ConnectDriveButton
@@ -304,10 +305,20 @@ export default async function HomePage({
                   redirectTo="/"
                 />
               ) : (
-                <SignInButton />
+                <ConnectDriveButton
+                  label={session?.user?.email ? "Connect Google Drive" : "Log in with Google Drive"}
+                  redirectTo="/"
+                />
               )}
             </div>
-          ) : null}
+          ) : (
+            <div className="hero-actions">
+              <ConnectDriveButton
+                label={session?.user?.authError ? "Reconnect Google Drive" : "Connect Google Drive"}
+                redirectTo="/"
+              />
+            </div>
+          )}
         </section>
       ) : null}
       <section className={`finder-layout ${layoutMode === "list" ? "finder-layout-list" : ""}`}>
