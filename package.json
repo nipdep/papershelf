@@ -6,7 +6,7 @@
     "dev": "NEXT_SWC_PATH=$PWD/.cache/next-swc XDG_CACHE_HOME=$PWD/.cache NEXT_TEST_WASM_DIR=$PWD/node_modules/@next/swc-wasm-nodejs next dev",
     "build": "NEXT_SWC_PATH=$PWD/.cache/next-swc XDG_CACHE_HOME=$PWD/.cache NEXT_TEST_WASM_DIR=$PWD/node_modules/@next/swc-wasm-nodejs next build",
     "start": "next start",
-    "test": "vitest run tests/authz.test.ts tests/drive-utils.test.ts tests/env.test.ts tests/folder-tree.test.tsx tests/library-config.test.ts tests/paper-table.test.tsx tests/scan-drive-library.test.ts && node --import tsx tests/index-sqlite.node.ts",
+    "test": "vitest run tests/authz.test.ts tests/drive-utils.test.ts tests/env.test.ts tests/folder-tree.test.tsx tests/library-config.test.ts tests/library-service.test.ts tests/paper-table.test.tsx tests/scan-drive-library.test.ts && node --import tsx tests/index-sqlite.node.ts",
     "test:watch": "vitest"
   },
   "dependencies": {

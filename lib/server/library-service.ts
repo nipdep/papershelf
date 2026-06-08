@@ -21,6 +21,7 @@ import {
   ExplorerPaper,
   LibraryConfig,
   LibraryIndexData,
+  LibraryRecord,
   LibrarySummary,
   PaperAccessLevel
 } from "@/lib/models";
@@ -105,11 +106,36 @@ async function summarizeLibrary(
   }
 }
 
+export function mergeLibraryRecords(
+  configuredLibraries: LibraryRecord[],
+  discoveredDriveFolderIds: string[]
+): LibraryRecord[] {
+  const merged = new Map(
+    configuredLibraries.map((library) => [library.driveFolderId, library] as const)
+  );
+
+  for (const driveFolderId of discoveredDriveFolderIds) {
+    if (merged.has(driveFolderId)) {
+      continue;
+    }
+
+    merged.set(driveFolderId, {
+      id: driveFolderId,
+      driveFolderId,
+      addedAt: new Date().toISOString()
+    });
+  }
+
+  return [...merged.values()];
+}
+
 export async function listLibrariesForSession(session: Session): Promise<LibrarySummary[]> {
   const driveClient = await createSessionDriveClient(session);
   const config = await loadLibraryConfig(driveClient);
+  const discoveredDriveFolderIds = await driveClient.discoverLibraryRootIds();
+  const libraries = mergeLibraryRecords(config.libraries, discoveredDriveFolderIds);
 
-  const summaries = await Promise.all(config.libraries.map((library) => summarizeLibrary(driveClient, library)));
+  const summaries = await Promise.all(libraries.map((library) => summarizeLibrary(driveClient, library)));
 
   return summaries;
 }

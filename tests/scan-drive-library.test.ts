@@ -12,6 +12,12 @@ function createDriveClient(): DriveClient {
         mimeType: "application/vnd.google-apps.folder"
       };
     },
+    async getIndexFileMetadata() {
+      throw new Error("not used");
+    },
+    async discoverLibraryRootIds() {
+      throw new Error("not used");
+    },
     async listFolderChildren(folderId, pageToken) {
       if (folderId === "root" && !pageToken) {
         return {
@@ -77,6 +83,12 @@ function createDriveClient(): DriveClient {
       throw new Error("not used");
     },
     async createFolder() {
+      throw new Error("not used");
+    },
+    async updateFolder() {
+      throw new Error("not used");
+    },
+    async trashFolder() {
       throw new Error("not used");
     },
     async uploadPdf() {

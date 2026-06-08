@@ -82,6 +82,7 @@ function toDriveNotFoundError(error: unknown): AppError {
 export interface DriveClient {
   getFileMetadata(fileId: string): Promise<DriveItem>;
   getIndexFileMetadata(rootFolderId: string): Promise<DriveItem | null>;
+  discoverLibraryRootIds(): Promise<string[]>;
   listFolderChildren(
     folderId: string,
     pageToken?: string
@@ -192,6 +193,34 @@ async function getPaperManagerFolder(
   return findChildByName(drive, rootFolderId, ".paper-manager");
 }
 
+async function discoverLibraryRootIds(drive: drive_v3.Drive): Promise<string[]> {
+  const rootIds = new Set<string>();
+  let pageToken: string | undefined;
+
+  do {
+    const response = await drive.files.list({
+      q: `mimeType = 'application/vnd.google-apps.folder' and name = '.paper-manager' and trashed = false`,
+      pageToken,
+      pageSize: 100,
+      fields: `nextPageToken,files(${DRIVE_FIELDS})`,
+      supportsAllDrives: true,
+      includeItemsFromAllDrives: true
+    });
+
+    for (const file of response.data.files ?? []) {
+      const folder = mapDriveFile(file);
+      const rootId = folder.parents?.[0];
+      if (rootId) {
+        rootIds.add(rootId);
+      }
+    }
+
+    pageToken = response.data.nextPageToken ?? undefined;
+  } while (pageToken);
+
+  return [...rootIds];
+}
+
 async function findIndexFile(
   drive: drive_v3.Drive,
   paperManagerFolderId: string
@@ -276,6 +305,14 @@ function createDriveClient(
 
     async getIndexFileMetadata(rootFolderId) {
       return getIndexFileForRoot(drive, rootFolderId);
+    },
+
+    async discoverLibraryRootIds() {
+      try {
+        return await discoverLibraryRootIds(drive);
+      } catch (error) {
+        throw toAuthenticationError(error) ?? error;
+      }
     },
 
     async listFolderChildren(folderId, pageToken) {
