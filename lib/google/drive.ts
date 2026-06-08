@@ -32,6 +32,9 @@ const PAPER_MANAGER_USERS_FOLDER_NAME = "users";
 const MASTER_INDEX_FILE_NAME = "papershelf-master-index.sqlite";
 const ANYONE_INDEX_FILE_NAME = "papershelf-anyone-index.sqlite";
 const USER_INDEX_FILE_PREFIX = "papershelf-user-";
+const PUBLIC_LIBRARY_MANIFEST_FILE_NAME = "papershelf-public-library.json";
+const PUBLIC_REGISTRY_FOLDER_NAME = ".papershelf-public";
+const PUBLIC_CATALOG_FILE_NAME = "papershelf-public-catalog.json";
 
 function getDriveErrorStatus(error: unknown): number | undefined {
   if (
@@ -95,6 +98,8 @@ export interface DriveClient {
   listAccessibleManagedIndexFiles(
     input: { kind: "anyone" } | { kind: "user"; userId: string }
   ): Promise<DriveItem[]>;
+  listPublicLibraryManifestFiles(): Promise<DriveItem[]>;
+  listPublicCatalogFiles(): Promise<DriveItem[]>;
   listManagedUserIndexFiles(rootFolderId: string): Promise<DriveItem[]>;
   listFolderChildren(
     folderId: string,
@@ -115,6 +120,13 @@ export interface DriveClient {
     input: { kind: ManagedIndexKind; userId?: string }
   ): Promise<Uint8Array | null>;
   downloadFileBytes(fileId: string): Promise<Uint8Array>;
+  downloadFileText(fileId: string): Promise<string>;
+  uploadOrUpdatePublicCatalog(json: string): Promise<{ fileId: string }>;
+  uploadOrUpdatePublicLibraryManifest(
+    rootFolderId: string,
+    json: string
+  ): Promise<{ fileId: string }>;
+  removePublicLibraryManifest(rootFolderId: string): Promise<void>;
   uploadOrUpdateIndexSqlite(
     rootFolderId: string,
     bytes: Uint8Array
@@ -290,6 +302,42 @@ async function getOrCreateManagedIndexParentFolder(
   return getOrCreatePaperManagerFolder(drive, rootFolderId);
 }
 
+async function findPublicLibraryManifestFile(
+  drive: drive_v3.Drive,
+  rootFolderId: string
+): Promise<DriveItem | null> {
+  const folder = await getPaperManagerFolder(drive, rootFolderId);
+  if (!folder) {
+    return null;
+  }
+
+  return findChildByName(drive, folder.id, PUBLIC_LIBRARY_MANIFEST_FILE_NAME);
+}
+
+async function getOrCreatePublicRegistryFolder(drive: drive_v3.Drive): Promise<DriveItem> {
+  const existing = await findChildByName(drive, "root", PUBLIC_REGISTRY_FOLDER_NAME);
+  if (existing) {
+    return existing;
+  }
+
+  const created = await drive.files.create({
+    requestBody: {
+      name: PUBLIC_REGISTRY_FOLDER_NAME,
+      mimeType: "application/vnd.google-apps.folder",
+      parents: ["root"]
+    },
+    fields: DRIVE_FIELDS,
+    supportsAllDrives: true
+  });
+
+  return mapDriveFile(created.data);
+}
+
+async function findPublicCatalogFile(drive: drive_v3.Drive): Promise<DriveItem | null> {
+  const folder = await getOrCreatePublicRegistryFolder(drive);
+  return findChildByName(drive, folder.id, PUBLIC_CATALOG_FILE_NAME);
+}
+
 async function discoverLibraryRootIds(drive: drive_v3.Drive): Promise<string[]> {
   const rootIds = new Set<string>();
   let pageToken: string | undefined;
@@ -387,6 +435,24 @@ async function downloadDriveFileBytes(
   return new Uint8Array(response.data as ArrayBuffer);
 }
 
+async function downloadDriveFileText(
+  drive: drive_v3.Drive,
+  fileId: string
+): Promise<string> {
+  const response = await drive.files.get(
+    {
+      fileId,
+      alt: "media",
+      supportsAllDrives: true
+    },
+    {
+      responseType: "text"
+    }
+  );
+
+  return String(response.data);
+}
+
 async function ensureUserReadPermission(
   drive: drive_v3.Drive,
   fileId: string,
@@ -425,20 +491,40 @@ async function ensureAnyoneReadPermission(
   drive: drive_v3.Drive,
   fileId: string
 ) {
+  return ensurePublicReadPermission(drive, fileId, false);
+}
+
+async function ensurePublicReadPermission(
+  drive: drive_v3.Drive,
+  fileId: string,
+  allowFileDiscovery: boolean
+) {
   const existing = await drive.permissions.list({
     fileId,
     fields: "permissions(id,type,role,allowFileDiscovery)",
     supportsAllDrives: true
   });
 
-  const alreadyShared = (existing.data.permissions ?? []).some(
+  const existingAnyonePermission = (existing.data.permissions ?? []).find(
     (permission) =>
       permission.type === "anyone" &&
-      permission.role !== "none" &&
-      permission.allowFileDiscovery === false
+      permission.role !== "none"
   );
 
-  if (alreadyShared) {
+  if (existingAnyonePermission?.allowFileDiscovery === allowFileDiscovery) {
+    return;
+  }
+
+  if (existingAnyonePermission?.id) {
+    await drive.permissions.update({
+      fileId,
+      permissionId: existingAnyonePermission.id,
+      requestBody: {
+        role: "reader",
+        allowFileDiscovery
+      },
+      supportsAllDrives: true
+    });
     return;
   }
 
@@ -447,7 +533,7 @@ async function ensureAnyoneReadPermission(
     requestBody: {
       type: "anyone",
       role: "reader",
-      allowFileDiscovery: false
+      allowFileDiscovery
     },
     supportsAllDrives: true
   });
@@ -554,6 +640,22 @@ function createDriveClient(
       }
     },
 
+    async listPublicLibraryManifestFiles() {
+      try {
+        return await searchFilesByName(drive, PUBLIC_LIBRARY_MANIFEST_FILE_NAME);
+      } catch (error) {
+        throw toAuthenticationError(error) ?? error;
+      }
+    },
+
+    async listPublicCatalogFiles() {
+      try {
+        return await searchFilesByName(drive, PUBLIC_CATALOG_FILE_NAME);
+      } catch (error) {
+        throw toAuthenticationError(error) ?? error;
+      }
+    },
+
     async listManagedUserIndexFiles(rootFolderId) {
       const usersFolder = await getManagedIndexParentFolder(drive, rootFolderId, "user");
       if (!usersFolder) {
@@ -648,7 +750,7 @@ function createDriveClient(
       }
 
       if (input.kind === "anyone") {
-        await ensureAnyoneReadPermission(drive, fileId);
+        await ensurePublicReadPermission(drive, fileId, true);
       } else if (input.kind === "user") {
         if (!input.shareWithUserEmail) {
           throw new AppError(
@@ -674,6 +776,106 @@ function createDriveClient(
 
     async downloadFileBytes(fileId) {
       return downloadDriveFileBytes(drive, fileId);
+    },
+
+    async downloadFileText(fileId) {
+      return downloadDriveFileText(drive, fileId);
+    },
+
+    async uploadOrUpdatePublicCatalog(json) {
+      if (accessMode === "public") {
+        throw createReadOnlyDriveError();
+      }
+
+      const folder = await getOrCreatePublicRegistryFolder(drive);
+      const existing = await findPublicCatalogFile(drive);
+      const media = {
+        mimeType: "application/json",
+        body: Readable.from(json)
+      };
+
+      let fileId: string;
+      if (existing) {
+        const updated = await drive.files.update({
+          fileId: existing.id,
+          media,
+          fields: "id",
+          supportsAllDrives: true
+        });
+        fileId = updated.data.id ?? existing.id;
+      } else {
+        const created = await drive.files.create({
+          requestBody: {
+            name: PUBLIC_CATALOG_FILE_NAME,
+            parents: [folder.id]
+          },
+          media,
+          fields: "id",
+          supportsAllDrives: true
+        });
+        fileId = created.data.id ?? randomUUID();
+      }
+
+      await ensurePublicReadPermission(drive, fileId, true);
+      return { fileId };
+    },
+
+    async uploadOrUpdatePublicLibraryManifest(rootFolderId, json) {
+      if (accessMode === "public") {
+        throw createReadOnlyDriveError();
+      }
+
+      const folder = await getOrCreatePaperManagerFolder(drive, rootFolderId);
+      const existing = await findPublicLibraryManifestFile(drive, rootFolderId);
+      const media = {
+        mimeType: "application/json",
+        body: Readable.from(json)
+      };
+
+      let fileId: string;
+      if (existing) {
+        const updated = await drive.files.update({
+          fileId: existing.id,
+          media,
+          fields: "id",
+          supportsAllDrives: true
+        });
+        fileId = updated.data.id ?? existing.id;
+      } else {
+        const created = await drive.files.create({
+          requestBody: {
+            name: PUBLIC_LIBRARY_MANIFEST_FILE_NAME,
+            parents: [folder.id]
+          },
+          media,
+          fields: "id",
+          supportsAllDrives: true
+        });
+        fileId = created.data.id ?? randomUUID();
+      }
+
+      await ensurePublicReadPermission(drive, fileId, true);
+      return { fileId };
+    },
+
+    async removePublicLibraryManifest(rootFolderId) {
+      if (accessMode === "public") {
+        throw createReadOnlyDriveError();
+      }
+
+      const existing = await findPublicLibraryManifestFile(drive, rootFolderId);
+      if (!existing) {
+        return;
+      }
+
+      await drive.files.update({
+        fileId: existing.id,
+        requestBody: {
+          trashed: true
+        },
+        fields: "id",
+        supportsAllDrives: true
+      });
     },
 
     async uploadOrUpdateIndexSqlite(rootFolderId, bytes) {

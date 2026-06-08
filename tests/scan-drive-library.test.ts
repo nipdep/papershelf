@@ -24,6 +24,12 @@ function createDriveClient(): DriveClient {
     async listAccessibleManagedIndexFiles() {
       throw new Error("not used");
     },
+    async listPublicLibraryManifestFiles() {
+      throw new Error("not used");
+    },
+    async listPublicCatalogFiles() {
+      throw new Error("not used");
+    },
     async listManagedUserIndexFiles() {
       throw new Error("not used");
     },
@@ -86,6 +92,18 @@ function createDriveClient(): DriveClient {
       throw new Error("not used");
     },
     async downloadFileBytes() {
+      throw new Error("not used");
+    },
+    async downloadFileText() {
+      throw new Error("not used");
+    },
+    async uploadOrUpdatePublicLibraryManifest() {
+      throw new Error("not used");
+    },
+    async uploadOrUpdatePublicCatalog() {
+      throw new Error("not used");
+    },
+    async removePublicLibraryManifest() {
       throw new Error("not used");
     },
     async uploadOrUpdateIndexSqlite() {

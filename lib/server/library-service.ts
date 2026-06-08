@@ -1,6 +1,7 @@
 import { Session } from "next-auth";
 
 import { AppError } from "@/lib/errors";
+import { getPublicCatalogFileId } from "@/lib/env";
 import {
   DriveClient,
   getDriveClientForSession,
@@ -204,6 +205,63 @@ function mergeIndexData(indexes: LibraryIndexData[]): LibraryIndexData {
   };
 }
 
+type PublicCatalogEntry = {
+  libraryId: string;
+  libraryName: string;
+  anyoneIndexFileId: string;
+  generatedAt: string;
+};
+
+async function loadPublicCatalog(driveClient: DriveClient): Promise<PublicCatalogEntry[]> {
+  const configuredFileId = getPublicCatalogFileId();
+  if (configuredFileId) {
+    try {
+      const json = await driveClient.downloadFileText(configuredFileId);
+      const parsed = JSON.parse(json) as { libraries?: PublicCatalogEntry[] };
+      return Array.isArray(parsed.libraries) ? parsed.libraries : [];
+    } catch {
+      return [];
+    }
+  }
+
+  try {
+    const files = await driveClient.listPublicCatalogFiles();
+    const file = files[0];
+    if (!file) {
+      return [];
+    }
+
+    const json = await driveClient.downloadFileText(file.id);
+    const parsed = JSON.parse(json) as { libraries?: PublicCatalogEntry[] };
+    return Array.isArray(parsed.libraries) ? parsed.libraries : [];
+  } catch {
+    return [];
+  }
+}
+
+async function savePublicCatalog(
+  driveClient: DriveClient,
+  libraries: PublicCatalogEntry[]
+): Promise<string> {
+  const result = await driveClient.uploadOrUpdatePublicCatalog(
+    JSON.stringify(
+      {
+        updatedAt: new Date().toISOString(),
+        libraries
+      },
+      null,
+      2
+    )
+  );
+  return result.fileId;
+}
+
+export async function getDiscoveredPublicCatalogFileId(session: Session): Promise<string | null> {
+  const driveClient = await createSessionDriveClient(session);
+  const files = await driveClient.listPublicCatalogFiles();
+  return files[0]?.id ?? null;
+}
+
 async function summarizeLibrary(
   driveClient: DriveClient,
   library: LibraryConfig["libraries"][number]
@@ -296,21 +354,58 @@ async function loadAccessibleDerivedIndexesForSession(
 }
 
 async function loadAccessibleDerivedIndexesForPublic(): Promise<Map<string, LibraryIndexData[]>> {
-  const driveClient = await createPublicDriveClient();
-  const files = await driveClient.listAccessibleManagedIndexFiles({ kind: "anyone" });
-  const grouped = new Map<string, LibraryIndexData[]>();
+  let driveClient: DriveClient;
+  try {
+    driveClient = await createPublicDriveClient();
+  } catch {
+    return new Map();
+  }
 
-  for (const file of files) {
+  const grouped = new Map<string, LibraryIndexData[]>();
+  const catalog = await loadPublicCatalog(driveClient);
+  if (catalog.length > 0) {
+    for (const entry of catalog) {
+      try {
+        const index = await parseIndexSqlite(await driveClient.downloadFileBytes(entry.anyoneIndexFileId));
+        const libraryId = index.sourceLibraryId ?? entry.libraryId;
+        const bucket = grouped.get(libraryId) ?? [];
+        bucket.push(index);
+        grouped.set(libraryId, bucket);
+      } catch {
+        continue;
+      }
+    }
+
+    return grouped;
+  }
+
+  let manifestFiles;
+  try {
+    manifestFiles = await driveClient.listPublicLibraryManifestFiles();
+  } catch {
+    return grouped;
+  }
+
+  for (const manifestFile of manifestFiles) {
     try {
-      const bytes = await driveClient.downloadFileBytes(file.id);
-      const index = await parseIndexSqlite(bytes);
-      if (!index.sourceLibraryId) {
+      const manifest = JSON.parse(await driveClient.downloadFileText(manifestFile.id)) as {
+        libraryId?: string;
+        anyoneIndexFileId?: string;
+      };
+      const rootFolderId = typeof manifest.libraryId === "string" ? manifest.libraryId : undefined;
+      const anyoneIndexFileId =
+        typeof manifest.anyoneIndexFileId === "string" ? manifest.anyoneIndexFileId : undefined;
+      if (!rootFolderId || !anyoneIndexFileId) {
         continue;
       }
 
-      const bucket = grouped.get(index.sourceLibraryId) ?? [];
+      const bytes = await driveClient.downloadFileBytes(anyoneIndexFileId);
+      const index = await parseIndexSqlite(bytes);
+      const libraryId = index.sourceLibraryId ?? rootFolderId;
+
+      const bucket = grouped.get(libraryId) ?? [];
       bucket.push(index);
-      grouped.set(index.sourceLibraryId, bucket);
+      grouped.set(libraryId, bucket);
     } catch {
       continue;
     }
@@ -412,6 +507,11 @@ export async function removeLibraryForOwner(session: Session, libraryId: string)
   const config = await loadLibraryConfig(driveClient);
   const nextConfig = removeLibraryRecord(config, libraryId);
   await saveLibraryConfig(driveClient, nextConfig);
+  const publicCatalog = await loadPublicCatalog(driveClient);
+  await savePublicCatalog(
+    driveClient,
+    publicCatalog.filter((entry) => entry.libraryId !== libraryId)
+  );
   return nextConfig;
 }
 
@@ -462,10 +562,45 @@ export async function rebuildLibraryIndex(session: Session, libraryId: string) {
       indexKind: "anyone"
     }
   });
-  await driveClient.uploadOrUpdateManagedIndex(libraryId, {
+  const anyoneUpload = await driveClient.uploadOrUpdateManagedIndex(libraryId, {
     kind: "anyone",
     bytes: anyoneBytes
   });
+
+  if (anyoneIndex && (anyoneIndex.folders.length > 0 || anyoneIndex.papers.length > 0)) {
+    await driveClient.uploadOrUpdatePublicLibraryManifest(
+      libraryId,
+      JSON.stringify(
+        {
+          libraryId,
+          libraryName: metadata.name,
+          anyoneIndexFileId: anyoneUpload.fileId,
+          generatedAt
+        },
+        null,
+        2
+      )
+    );
+
+    const publicCatalog = await loadPublicCatalog(driveClient);
+    const nextCatalog = [
+      ...publicCatalog.filter((entry) => entry.libraryId !== libraryId),
+      {
+        libraryId,
+        libraryName: metadata.name,
+        anyoneIndexFileId: anyoneUpload.fileId,
+        generatedAt
+      }
+    ].sort((left, right) => left.libraryName.localeCompare(right.libraryName));
+    var publicCatalogFileId = await savePublicCatalog(driveClient, nextCatalog);
+  } else {
+    await driveClient.removePublicLibraryManifest(libraryId);
+    const publicCatalog = await loadPublicCatalog(driveClient);
+    var publicCatalogFileId = await savePublicCatalog(
+      driveClient,
+      publicCatalog.filter((entry) => entry.libraryId !== libraryId)
+    );
+  }
 
   const sharedUsers = collectSharedUsers(masterIndex);
   const activeUserIds = new Set(sharedUsers.map((user) => user.id));
@@ -522,6 +657,7 @@ export async function rebuildLibraryIndex(session: Session, libraryId: string) {
     foldersIndexed: scanResult.folders.length,
     papersIndexed: scanResult.papers.length,
     indexFileId: upload.fileId,
+    publicCatalogFileId,
     generatedAt
   };
 }
@@ -548,14 +684,39 @@ async function loadMergedDerivedIndexForLibrary(
   input: { libraryId: string; userId?: string }
 ): Promise<LibraryIndexData> {
   const indexes: LibraryIndexData[] = [];
-  const anyoneFiles = await driveClient.listAccessibleManagedIndexFiles({ kind: "anyone" });
-
-  for (const file of anyoneFiles) {
-    const bytes = await driveClient.downloadFileBytes(file.id);
-    const index = await parseIndexSqlite(bytes);
-    if (index.sourceLibraryId === input.libraryId) {
-      indexes.push(index);
+  const catalog = await loadPublicCatalog(driveClient);
+  const publicCatalogEntry = catalog.find((entry) => entry.libraryId === input.libraryId);
+  if (publicCatalogEntry) {
+    try {
+      indexes.push(await parseIndexSqlite(await driveClient.downloadFileBytes(publicCatalogEntry.anyoneIndexFileId)));
+    } catch {
+      // Fall back to legacy per-library manifest lookup below.
     }
+  }
+
+  try {
+    const manifestFiles = await driveClient.listPublicLibraryManifestFiles();
+    for (const manifestFile of manifestFiles) {
+      try {
+        const manifest = JSON.parse(await driveClient.downloadFileText(manifestFile.id)) as {
+          libraryId?: string;
+          anyoneIndexFileId?: string;
+        };
+        if (
+          manifest.libraryId === input.libraryId &&
+          typeof manifest.anyoneIndexFileId === "string"
+        ) {
+          indexes.push(
+            await parseIndexSqlite(await driveClient.downloadFileBytes(manifest.anyoneIndexFileId))
+          );
+          break;
+        }
+      } catch {
+        continue;
+      }
+    }
+  } catch {
+    // Public manifest discovery is best-effort; fall through to empty state.
   }
 
   if (input.userId) {

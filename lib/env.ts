@@ -28,6 +28,11 @@ const envSchema = z.object({
       typeof value === "string" && value.trim().length === 0 ? undefined : value,
     z.string().email().optional()
   ),
+  PUBLIC_CATALOG_FILE_ID: z.preprocess(
+    (value) =>
+      typeof value === "string" && value.trim().length === 0 ? undefined : value,
+    z.string().optional()
+  ),
   DEFAULT_LIBRARY_FOLDER_IDS: z.preprocess(
     (value) =>
       typeof value === "string" && value.trim().length === 0 ? undefined : value,
@@ -47,6 +52,7 @@ export function getEnv(): Env {
     AUTH_URL: process.env.AUTH_URL,
     NEXTAUTH_URL: process.env.NEXTAUTH_URL,
     SYSTEM_OWNER_EMAIL: process.env.SYSTEM_OWNER_EMAIL,
+    PUBLIC_CATALOG_FILE_ID: process.env.PUBLIC_CATALOG_FILE_ID,
     DEFAULT_LIBRARY_FOLDER_IDS: process.env.DEFAULT_LIBRARY_FOLDER_IDS
   });
 }
@@ -77,7 +83,11 @@ export function getGoogleApiKey(): string | undefined {
 
 export function isConfiguredForPublicDriveBrowsing(): boolean {
   const env = getEnv();
-  return Boolean(env.GOOGLE_API_KEY);
+  return Boolean(env.GOOGLE_API_KEY && env.PUBLIC_CATALOG_FILE_ID);
+}
+
+export function getPublicCatalogFileId(): string | undefined {
+  return getEnv().PUBLIC_CATALOG_FILE_ID;
 }
 
 export function isOwnerEmail(email?: string | null): boolean {

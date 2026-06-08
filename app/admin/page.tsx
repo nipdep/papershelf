@@ -5,10 +5,12 @@ import { unstable_rethrow } from "next/dist/client/components/unstable-rethrow";
 
 import { auth } from "@/auth";
 import { ConnectDriveButton } from "@/components/auth-buttons";
+import { getPublicCatalogFileId } from "@/lib/env";
 import { asAppError } from "@/lib/errors";
 import type { LibrarySummary } from "@/lib/models";
 import {
   addLibraryForOwner,
+  getDiscoveredPublicCatalogFileId,
   listLibrariesForSession,
   rebuildLibraryIndex,
   removeLibraryForOwner
@@ -29,9 +31,13 @@ export default async function AdminPage() {
   }
 
   let libraries: LibrarySummary[] = [];
+  let discoveredPublicCatalogFileId: string | null = null;
   if (session.user.hasDriveAccess) {
     try {
       libraries = await listLibrariesForSession(session);
+      if (session.user.isOwner) {
+        discoveredPublicCatalogFileId = await getDiscoveredPublicCatalogFileId(session);
+      }
     } catch (error) {
       unstable_rethrow(error);
       const appError = asAppError(error);
@@ -41,6 +47,7 @@ export default async function AdminPage() {
       throw appError;
     }
   }
+  const configuredPublicCatalogFileId = getPublicCatalogFileId();
 
   async function addLibraryAction(formData: FormData) {
     "use server";
@@ -106,6 +113,28 @@ export default async function AdminPage() {
 
       <div className="settings-grid">
         <section className="section-panel">
+          {session.user.isOwner && session.user.hasDriveAccess && !configuredPublicCatalogFileId ? (
+            <section className="card glass-card stack">
+              <div className="title-cluster">
+                <p className="eyebrow">Public bootstrap</p>
+                <h2>Set `PUBLIC_CATALOG_FILE_ID` once</h2>
+                <p className="muted">
+                  Anonymous public browsing needs one stable catalog file ID. After you set it in
+                  your environment and redeploy, the app will keep that catalog updated
+                  automatically.
+                </p>
+              </div>
+              <div className="field">
+                <label htmlFor="publicCatalogFileId">Detected catalog file ID</label>
+                <input
+                  id="publicCatalogFileId"
+                  readOnly
+                  value={discoveredPublicCatalogFileId ?? "Run Rebuild index once to create it."}
+                />
+              </div>
+            </section>
+          ) : null}
+
           <section className="card glass-card">
             <div className="title-cluster">
               <p className="eyebrow">Account</p>
