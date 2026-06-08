@@ -94,6 +94,7 @@ export default async function HomePage({
   const hasValidSession = Boolean(session?.user?.email && !session?.user?.authError);
   const signedInSession = hasValidSession ? session! : null;
   const canManageLibraries = Boolean(signedInSession?.user.isOwner && signedInSession.user.hasDriveAccess);
+  const isPublicOnlyView = !signedInSession?.user.hasDriveAccess;
 
   if (!hasValidSession && !canBrowsePublicLibraries) {
     return (
@@ -185,6 +186,21 @@ export default async function HomePage({
 
   const cookieStore = await cookies();
   const layoutMode = cookieStore.get("papershelf-layout")?.value === "list" ? "list" : "split";
+  const isViewerWithDrive = Boolean(signedInSession?.user.hasDriveAccess && !signedInSession.user.isOwner);
+  const folderEmptyMessage = !signedInSession
+    ? "No public folders are available yet."
+    : isViewerWithDrive
+      ? "No public or privately shared folders are available yet."
+      : canManageLibraries
+        ? "No indexed folders."
+        : "No public folders are available yet. Connect Google Drive to load folders shared privately with you.";
+  const paperEmptyMessage = !signedInSession
+    ? "No public papers match this folder yet."
+    : isViewerWithDrive
+      ? "No public or privately shared papers match this folder yet."
+      : canManageLibraries
+        ? "No papers match this folder yet."
+        : "No public papers match this folder yet. Connect Google Drive to load papers shared privately with you.";
   const visibleFolderIds = collectDescendantFolderIds(explorer.folders, folderId);
   const visiblePapers = explorer.papers.filter((paper) => {
     const matchesFolder = folderId ? visibleFolderIds.has(paper.driveFolderId) : true;
@@ -266,7 +282,7 @@ export default async function HomePage({
 
   return (
     <main className="workspace workspace-finder">
-      {!canManageLibraries ? (
+      {isPublicOnlyView ? (
         <section className="card glass-card stack">
           <div className="title-cluster">
             <p className="eyebrow">
@@ -332,6 +348,7 @@ export default async function HomePage({
             canEdit={canManageLibraries}
             createFolderAction={canManageLibraries ? createFolderAction : undefined}
             currentFolderId={folderId}
+            emptyMessage={folderEmptyMessage}
             folders={explorer.folders}
             pageMode="root"
             query={globalQuery}
@@ -355,6 +372,7 @@ export default async function HomePage({
 
           <PaperTable
             canEdit={false}
+            emptyMessage={paperEmptyMessage}
             papers={visiblePapers}
             selectedPaperId={selectedPaper?.driveFileId}
             selectedFolderId={selectedFolder?.driveFolderId}
