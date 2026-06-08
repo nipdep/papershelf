@@ -1,7 +1,6 @@
 import { Session } from "next-auth";
 
 import { AppError } from "@/lib/errors";
-import { getDefaultLibraryFolderIds } from "@/lib/env";
 import {
   DriveClient,
   getDriveClientForSession,
@@ -70,6 +69,141 @@ function filterIndexForPublicAccess(index: LibraryIndexData): LibraryIndexData |
   };
 }
 
+function getDirectSharedUserIds(
+  entry: { sharedUsers?: Array<{ id: string }> }
+): string[] {
+  return entry.sharedUsers?.map((user) => user.id) ?? [];
+}
+
+function deriveAccessibleIndex(
+  source: LibraryIndexData,
+  visibility: { kind: "anyone" } | { kind: "user"; userId: string }
+): LibraryIndexData | null {
+  const folderById = new Map(source.folders.map((folder) => [folder.driveFolderId, folder]));
+  const childrenByParent = new Map<string, string[]>();
+  const papersByFolder = new Map<string, typeof source.papers>();
+
+  for (const folder of source.folders) {
+    const key = folder.parentFolderId ?? "";
+    const bucket = childrenByParent.get(key) ?? [];
+    bucket.push(folder.driveFolderId);
+    childrenByParent.set(key, bucket);
+  }
+
+  for (const paper of source.papers) {
+    const bucket = papersByFolder.get(paper.driveFolderId) ?? [];
+    bucket.push(paper);
+    papersByFolder.set(paper.driveFolderId, bucket);
+  }
+
+  const visibleFolderIds = new Set<string>();
+  const visiblePaperIds = new Set<string>();
+
+  const includeAncestors = (folderId: string | null | undefined) => {
+    let cursor = folderId ? folderById.get(folderId) : undefined;
+    while (cursor && !visibleFolderIds.has(cursor.driveFolderId)) {
+      visibleFolderIds.add(cursor.driveFolderId);
+      cursor = cursor.parentFolderId ? folderById.get(cursor.parentFolderId) : undefined;
+    }
+  };
+
+  const includeSubtree = (rootFolderId: string) => {
+    const queue = [rootFolderId];
+    while (queue.length > 0) {
+      const currentId = queue.shift();
+      if (!currentId || visibleFolderIds.has(currentId)) {
+        continue;
+      }
+
+      visibleFolderIds.add(currentId);
+      for (const paper of papersByFolder.get(currentId) ?? []) {
+        visiblePaperIds.add(paper.driveFileId);
+      }
+      for (const childId of childrenByParent.get(currentId) ?? []) {
+        queue.push(childId);
+      }
+    }
+  };
+
+  const folderIsVisible = (folder: LibraryIndexData["folders"][number]) =>
+    visibility.kind === "anyone"
+      ? isPubliclyAccessiblePaper(folder.accessLevel ?? "restricted")
+      : getDirectSharedUserIds(folder).includes(visibility.userId);
+
+  const paperIsVisible = (paper: LibraryIndexData["papers"][number]) =>
+    visibility.kind === "anyone"
+      ? isPubliclyAccessiblePaper(paper.accessLevel)
+      : getDirectSharedUserIds(paper).includes(visibility.userId);
+
+  for (const folder of source.folders) {
+    if (!folderIsVisible(folder)) {
+      continue;
+    }
+
+    includeAncestors(folder.driveFolderId);
+    includeSubtree(folder.driveFolderId);
+  }
+
+  for (const paper of source.papers) {
+    if (!paperIsVisible(paper)) {
+      continue;
+    }
+
+    visiblePaperIds.add(paper.driveFileId);
+    includeAncestors(paper.driveFolderId);
+  }
+
+  if (visiblePaperIds.size === 0 && visibleFolderIds.size === 0) {
+    return null;
+  }
+
+  return {
+    generatedAt: source.generatedAt,
+    sourceLibraryId: source.sourceLibraryId,
+    sourceLibraryName: source.sourceLibraryName,
+    indexKind: visibility.kind,
+    userId: visibility.kind === "user" ? visibility.userId : undefined,
+    folders: source.folders.filter((folder) => visibleFolderIds.has(folder.driveFolderId)),
+    papers: source.papers.filter((paper) => visiblePaperIds.has(paper.driveFileId))
+  };
+}
+
+function collectSharedUsers(index: LibraryIndexData): Array<{ id: string; emailAddress: string }> {
+  const users = new Map<string, string>();
+
+  for (const entry of [...index.folders, ...index.papers]) {
+    for (const user of entry.sharedUsers ?? []) {
+      if (user.emailAddress) {
+        users.set(user.id, user.emailAddress);
+      }
+    }
+  }
+
+  return [...users.entries()].map(([id, emailAddress]) => ({ id, emailAddress }));
+}
+
+function mergeIndexData(indexes: LibraryIndexData[]): LibraryIndexData {
+  const folders = new Map<string, ExplorerFolder | LibraryIndexData["folders"][number]>();
+  const papers = new Map<string, ExplorerPaper | LibraryIndexData["papers"][number]>();
+
+  for (const index of indexes) {
+    for (const folder of index.folders) {
+      folders.set(folder.driveFolderId, folder);
+    }
+    for (const paper of index.papers) {
+      papers.set(paper.driveFileId, paper);
+    }
+  }
+
+  return {
+    generatedAt: indexes.map((index) => index.generatedAt).filter(Boolean).sort().at(-1),
+    sourceLibraryId: indexes[0]?.sourceLibraryId,
+    sourceLibraryName: indexes[0]?.sourceLibraryName,
+    folders: [...folders.values()] as LibraryIndexData["folders"],
+    papers: [...papers.values()] as LibraryIndexData["papers"]
+  };
+}
+
 async function summarizeLibrary(
   driveClient: DriveClient,
   library: LibraryConfig["libraries"][number]
@@ -129,7 +263,82 @@ export function mergeLibraryRecords(
   return [...merged.values()];
 }
 
+async function loadAccessibleDerivedIndexesForSession(
+  session: Session
+): Promise<Map<string, LibraryIndexData[]>> {
+  const driveClient = await createSessionDriveClient(session);
+  const currentUserId = await driveClient.getCurrentUserPermissionId();
+  const files = [
+    ...(await driveClient.listAccessibleManagedIndexFiles({ kind: "anyone" })),
+    ...(currentUserId
+      ? await driveClient.listAccessibleManagedIndexFiles({ kind: "user", userId: currentUserId })
+      : [])
+  ];
+
+  const grouped = new Map<string, LibraryIndexData[]>();
+  for (const file of files) {
+    try {
+      const bytes = await driveClient.downloadFileBytes(file.id);
+      const index = await parseIndexSqlite(bytes);
+      if (!index.sourceLibraryId) {
+        continue;
+      }
+
+      const bucket = grouped.get(index.sourceLibraryId) ?? [];
+      bucket.push(index);
+      grouped.set(index.sourceLibraryId, bucket);
+    } catch {
+      continue;
+    }
+  }
+
+  return grouped;
+}
+
+async function loadAccessibleDerivedIndexesForPublic(): Promise<Map<string, LibraryIndexData[]>> {
+  const driveClient = await createPublicDriveClient();
+  const files = await driveClient.listAccessibleManagedIndexFiles({ kind: "anyone" });
+  const grouped = new Map<string, LibraryIndexData[]>();
+
+  for (const file of files) {
+    try {
+      const bytes = await driveClient.downloadFileBytes(file.id);
+      const index = await parseIndexSqlite(bytes);
+      if (!index.sourceLibraryId) {
+        continue;
+      }
+
+      const bucket = grouped.get(index.sourceLibraryId) ?? [];
+      bucket.push(index);
+      grouped.set(index.sourceLibraryId, bucket);
+    } catch {
+      continue;
+    }
+  }
+
+  return grouped;
+}
+
 export async function listLibrariesForSession(session: Session): Promise<LibrarySummary[]> {
+  if (!session.user.isOwner) {
+    const indexesByLibraryId = await loadAccessibleDerivedIndexesForSession(session);
+    return [...indexesByLibraryId.entries()].map(([libraryId, indexes]) => {
+      const merged = mergeIndexData(indexes);
+      return {
+        id: libraryId,
+        name: merged.sourceLibraryName ?? libraryId,
+        driveFolderId: libraryId,
+        accessible: true,
+        canEdit: false,
+        canAddChildren: false,
+        indexStatus: "ok" as const,
+        generatedAt: merged.generatedAt,
+        paperCount: merged.papers.length,
+        folderCount: merged.folders.length
+      };
+    });
+  }
+
   const driveClient = await createSessionDriveClient(session);
   const config = await loadLibraryConfig(driveClient);
   const discoveredDriveFolderIds = await driveClient.discoverLibraryRootIds();
@@ -141,20 +350,22 @@ export async function listLibrariesForSession(session: Session): Promise<Library
 }
 
 export async function listPublicLibraries(): Promise<LibrarySummary[]> {
-  const driveClient = await createPublicDriveClient();
-  const defaults = getDefaultLibraryFolderIds();
-
-  const summaries = await Promise.all(
-    defaults.map((driveFolderId) =>
-      summarizeLibrary(driveClient, {
-        id: driveFolderId,
-        driveFolderId,
-        addedAt: new Date().toISOString()
-      })
-    )
-  );
-
-  return summaries.filter((library) => library.accessible);
+  const indexesByLibraryId = await loadAccessibleDerivedIndexesForPublic();
+  return [...indexesByLibraryId.entries()].map(([libraryId, indexes]) => {
+    const merged = mergeIndexData(indexes);
+    return {
+      id: libraryId,
+      name: merged.sourceLibraryName ?? libraryId,
+      driveFolderId: libraryId,
+      accessible: true,
+      canEdit: false,
+      canAddChildren: false,
+      indexStatus: "ok" as const,
+      generatedAt: merged.generatedAt,
+      paperCount: merged.papers.length,
+      folderCount: merged.folders.length
+    };
+  });
 }
 
 export async function getLibrarySummaryForSession(
@@ -216,9 +427,85 @@ export async function rebuildLibraryIndex(session: Session, libraryId: string) {
   }
 
   const scanResult = await scanDriveLibrary(driveClient, libraryId);
-  const bytes = await createIndexSqlite(scanResult);
-  const upload = await driveClient.uploadOrUpdateIndexSqlite(libraryId, bytes);
   const generatedAt = new Date().toISOString();
+  const masterIndex: LibraryIndexData = {
+    generatedAt,
+    sourceLibraryId: libraryId,
+    sourceLibraryName: metadata.name,
+    indexKind: "master",
+    folders: scanResult.folders,
+    papers: scanResult.papers
+  };
+  const masterBytes = await createIndexSqlite({
+    folders: masterIndex.folders,
+    papers: masterIndex.papers,
+    metadata: {
+      generatedAt,
+      sourceLibraryId: libraryId,
+      sourceLibraryName: metadata.name,
+      indexKind: "master"
+    }
+  });
+  const upload = await driveClient.uploadOrUpdateManagedIndex(libraryId, {
+    kind: "master",
+    bytes: masterBytes
+  });
+
+  const anyoneIndex = deriveAccessibleIndex(masterIndex, { kind: "anyone" });
+  const anyoneBytes = await createIndexSqlite({
+    folders: anyoneIndex?.folders ?? [],
+    papers: anyoneIndex?.papers ?? [],
+    metadata: {
+      generatedAt,
+      sourceLibraryId: libraryId,
+      sourceLibraryName: metadata.name,
+      indexKind: "anyone"
+    }
+  });
+  await driveClient.uploadOrUpdateManagedIndex(libraryId, {
+    kind: "anyone",
+    bytes: anyoneBytes
+  });
+
+  const sharedUsers = collectSharedUsers(masterIndex);
+  const activeUserIds = new Set(sharedUsers.map((user) => user.id));
+  for (const user of sharedUsers) {
+    const userIndex = deriveAccessibleIndex(masterIndex, {
+      kind: "user",
+      userId: user.id
+    });
+    if (!userIndex) {
+      continue;
+    }
+
+    const userBytes = await createIndexSqlite({
+      folders: userIndex.folders,
+      papers: userIndex.papers,
+      metadata: {
+        generatedAt,
+        sourceLibraryId: libraryId,
+        sourceLibraryName: metadata.name,
+        indexKind: "user",
+        userId: user.id
+      }
+    });
+
+    await driveClient.uploadOrUpdateManagedIndex(libraryId, {
+      kind: "user",
+      userId: user.id,
+      shareWithUserEmail: user.emailAddress,
+      bytes: userBytes
+    });
+  }
+
+  const existingUserIndexes = await driveClient.listManagedUserIndexFiles(libraryId);
+  for (const existingIndex of existingUserIndexes) {
+    const matchedUserId = existingIndex.name.match(/^papershelf-user-(.+)\.sqlite$/)?.[1];
+    if (!matchedUserId || !activeUserIds.has(matchedUserId)) {
+      await driveClient.trashPaper(existingIndex.id);
+    }
+  }
+
   const config = await loadLibraryConfig(driveClient);
   const nextConfig = upsertLibraryRecord(config, {
     id: libraryId,
@@ -256,23 +543,62 @@ export async function rebuildAccessibleLibraryIndexes(session: Session) {
   };
 }
 
+async function loadMergedDerivedIndexForLibrary(
+  driveClient: DriveClient,
+  input: { libraryId: string; userId?: string }
+): Promise<LibraryIndexData> {
+  const indexes: LibraryIndexData[] = [];
+  const anyoneFiles = await driveClient.listAccessibleManagedIndexFiles({ kind: "anyone" });
+
+  for (const file of anyoneFiles) {
+    const bytes = await driveClient.downloadFileBytes(file.id);
+    const index = await parseIndexSqlite(bytes);
+    if (index.sourceLibraryId === input.libraryId) {
+      indexes.push(index);
+    }
+  }
+
+  if (input.userId) {
+    const userFiles = await driveClient.listAccessibleManagedIndexFiles({
+      kind: "user",
+      userId: input.userId
+    });
+
+    for (const file of userFiles) {
+      const bytes = await driveClient.downloadFileBytes(file.id);
+      const index = await parseIndexSqlite(bytes);
+      if (index.sourceLibraryId === input.libraryId) {
+        indexes.push(index);
+      }
+    }
+  }
+
+  if (indexes.length === 0) {
+    throw new AppError("INDEX_NOT_FOUND", "This library has not been indexed yet.", 404);
+  }
+
+  return mergeIndexData(indexes);
+}
+
 export async function getLibraryIndex(
   session: Session | null,
   libraryId: string
 ): Promise<LibraryIndexData> {
-  const driveClient = await createBrowsingDriveClient(session);
-  await driveClient.getFileMetadata(libraryId);
-  const bytes = await driveClient.downloadIndexSqlite(libraryId);
-  if (!bytes) {
-    throw new AppError("INDEX_NOT_FOUND", "This library has not been indexed yet.", 404);
+  if (session?.user.isOwner && session.user.hasDriveAccess) {
+    const driveClient = await createSessionDriveClient(session);
+    const bytes = await driveClient.downloadIndexSqlite(libraryId);
+    if (!bytes) {
+      throw new AppError("INDEX_NOT_FOUND", "This library has not been indexed yet.", 404);
+    }
+
+    return parseIndexSqlite(bytes);
   }
 
-  const index = await parseIndexSqlite(bytes);
-  return session?.user.hasDriveAccess ? index : filterIndexForPublicAccess(index) ?? {
-    ...index,
-    folders: [],
-    papers: []
-  };
+  const driveClient = await createBrowsingDriveClient(session);
+  const userId = session?.user.hasDriveAccess
+    ? await driveClient.getCurrentUserPermissionId()
+    : undefined;
+  return loadMergedDerivedIndexForLibrary(driveClient, { libraryId, userId: userId ?? undefined });
 }
 
 export async function searchLibraryIndex(
@@ -280,17 +606,19 @@ export async function searchLibraryIndex(
   libraryId: string,
   query: string
 ) {
-  const driveClient = await createBrowsingDriveClient(session);
-  await driveClient.getFileMetadata(libraryId);
-  const bytes = await driveClient.downloadIndexSqlite(libraryId);
-  if (!bytes) {
-    throw new AppError("INDEX_NOT_FOUND", "This library has no index yet.", 404);
-  }
-
-  const results = await searchIndexSqlite(bytes, query);
-  return session?.user.hasDriveAccess
-    ? results
-    : results.filter((paper) => isPubliclyAccessiblePaper(paper.accessLevel));
+  const index = await getLibraryIndex(session, libraryId);
+  const bytes = await createIndexSqlite({
+    folders: index.folders,
+    papers: index.papers,
+    metadata: {
+      generatedAt: index.generatedAt,
+      sourceLibraryId: index.sourceLibraryId,
+      sourceLibraryName: index.sourceLibraryName,
+      indexKind: index.indexKind,
+      userId: index.userId
+    }
+  });
+  return searchIndexSqlite(bytes, query);
 }
 
 export async function createSubfolder(
@@ -472,16 +800,13 @@ export async function loadExplorerDataForSession(session: Session): Promise<{
   }
 
   const libraries = (await listLibrariesForSession(session)).filter((library) => library.accessible);
-  return loadExplorerDataFromLibraries(
-    libraries,
-    async (library) => {
-      try {
-        return await getLibraryIndex(session, library.driveFolderId);
-      } catch {
-        return null;
-      }
+  return loadExplorerDataFromLibraries(libraries, async (library) => {
+    try {
+      return await getLibraryIndex(session, library.driveFolderId);
+    } catch {
+      return null;
     }
-  );
+  });
 }
 
 export async function loadExplorerDataForPublicAccess(): Promise<{
@@ -489,33 +814,14 @@ export async function loadExplorerDataForPublicAccess(): Promise<{
   folders: ExplorerFolder[];
   papers: ExplorerPaper[];
 }> {
-  const driveClient = await createPublicDriveClient();
   const libraries = await listPublicLibraries();
-  const indexed = await Promise.all(
-    libraries.map(async (library) => {
-      try {
-        const bytes = await driveClient.downloadIndexSqlite(library.driveFolderId);
-        if (!bytes) {
-          return null;
-        }
-
-        const index = filterIndexForPublicAccess(await parseIndexSqlite(bytes));
-        if (!index) {
-          return null;
-        }
-
-        return { library, index };
-      } catch {
-        return null;
-      }
-    })
-  );
-
-  return buildExplorerData(
-    indexed.filter((entry): entry is { library: LibrarySummary; index: LibraryIndexData } =>
-      Boolean(entry)
-    )
-  );
+  return loadExplorerDataFromLibraries(libraries, async (library) => {
+    try {
+      return await getLibraryIndex(null, library.driveFolderId);
+    } catch {
+      return null;
+    }
+  });
 }
 
 async function loadExplorerDataFromLibraries(

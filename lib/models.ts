@@ -8,9 +8,17 @@ export interface DriveCapabilities {
 }
 
 export interface DrivePermission {
+  id?: string;
   type?: string;
   role?: string;
   allowFileDiscovery?: boolean;
+  emailAddress?: string;
+  domain?: string;
+}
+
+export interface SharedDriveUser {
+  id: string;
+  emailAddress?: string;
 }
 
 export type PaperAccessLevel = "restricted" | "anyone_with_link" | "public_on_web";
@@ -26,6 +34,7 @@ export interface DriveItem {
   webViewLink?: string;
   capabilities?: DriveCapabilities;
   permissions?: DrivePermission[];
+  appProperties?: Record<string, string>;
 }
 
 export interface IndexedFolder {
@@ -36,6 +45,8 @@ export interface IndexedFolder {
   depth: number;
   modifiedTime?: string;
   createdTime?: string;
+  accessLevel?: PaperAccessLevel;
+  sharedUsers?: SharedDriveUser[];
 }
 
 export interface IndexedPaper {
@@ -51,6 +62,7 @@ export interface IndexedPaper {
   webViewLink?: string;
   accessLevel: PaperAccessLevel;
   indexedAt: string;
+  sharedUsers?: SharedDriveUser[];
 }
 
 export interface LibraryRecord {
@@ -85,6 +97,10 @@ export interface LibrarySummary {
 
 export interface LibraryIndexData {
   generatedAt?: string;
+  sourceLibraryId?: string;
+  sourceLibraryName?: string;
+  indexKind?: "master" | "anyone" | "user";
+  userId?: string;
   folders: IndexedFolder[];
   papers: IndexedPaper[];
 }

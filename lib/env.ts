@@ -77,7 +77,7 @@ export function getGoogleApiKey(): string | undefined {
 
 export function isConfiguredForPublicDriveBrowsing(): boolean {
   const env = getEnv();
-  return Boolean(env.GOOGLE_API_KEY && getDefaultLibraryFolderIds().length > 0);
+  return Boolean(env.GOOGLE_API_KEY);
 }
 
 export function isOwnerEmail(email?: string | null): boolean {

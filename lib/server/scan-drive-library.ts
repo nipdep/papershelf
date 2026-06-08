@@ -1,5 +1,5 @@
 import { DriveClient } from "@/lib/google/drive";
-import { IndexedFolder, IndexedPaper, PaperAccessLevel } from "@/lib/models";
+import { IndexedFolder, IndexedPaper, PaperAccessLevel, SharedDriveUser } from "@/lib/models";
 import {
   buildFolderPath,
   buildPaperPath,
@@ -14,6 +14,7 @@ export interface ScanResult {
 }
 
 function getPaperAccessLevel(permissions?: Array<{
+  id?: string;
   type?: string;
   role?: string;
   allowFileDiscovery?: boolean;
@@ -27,6 +28,25 @@ function getPaperAccessLevel(permissions?: Array<{
   }
 
   return anyonePermission.allowFileDiscovery ? "public_on_web" : "anyone_with_link";
+}
+
+function getSharedUsers(
+  permissions?: Array<{
+    id?: string;
+    type?: string;
+    role?: string;
+    emailAddress?: string;
+  }>
+): SharedDriveUser[] {
+  return (permissions ?? [])
+    .filter(
+      (permission): permission is { id: string; type?: string; role?: string; emailAddress?: string } =>
+        permission.type === "user" && permission.role !== "none" && typeof permission.id === "string"
+    )
+    .map((permission) => ({
+      id: permission.id,
+      emailAddress: permission.emailAddress
+    }));
 }
 
 export async function scanDriveLibrary(
@@ -43,7 +63,9 @@ export async function scanDriveLibrary(
       path: "/",
       depth: 0,
       modifiedTime: root.modifiedTime,
-      createdTime: root.createdTime
+      createdTime: root.createdTime,
+      accessLevel: getPaperAccessLevel(root.permissions),
+      sharedUsers: getSharedUsers(root.permissions)
     }
   ];
   const papers: IndexedPaper[] = [];
@@ -75,7 +97,9 @@ export async function scanDriveLibrary(
             path: childPath,
             depth: current.depth + 1,
             modifiedTime: child.modifiedTime,
-            createdTime: child.createdTime
+            createdTime: child.createdTime,
+            accessLevel: getPaperAccessLevel(child.permissions),
+            sharedUsers: getSharedUsers(child.permissions)
           });
           queue.push({
             id: child.id,
@@ -102,7 +126,8 @@ export async function scanDriveLibrary(
           sizeBytes: child.size,
           webViewLink: child.webViewLink,
           accessLevel: getPaperAccessLevel(child.permissions),
-          indexedAt
+          indexedAt,
+          sharedUsers: getSharedUsers(child.permissions)
         });
       }
 

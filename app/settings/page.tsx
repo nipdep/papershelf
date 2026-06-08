@@ -80,7 +80,7 @@ export default async function SettingsPage() {
                   ? session.user.hasDriveAccess
                     ? "Owner access enabled with Google Drive connected."
                     : "Owner account detected. Google Drive is not connected for this session."
-                  : "Standard library access."}
+                  : "Viewer access uses your Google sign-in only."}
               </p>
             </div>
           </article>

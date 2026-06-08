@@ -18,6 +18,15 @@ function createDriveClient(): DriveClient {
     async discoverLibraryRootIds() {
       throw new Error("not used");
     },
+    async getCurrentUserPermissionId() {
+      throw new Error("not used");
+    },
+    async listAccessibleManagedIndexFiles() {
+      throw new Error("not used");
+    },
+    async listManagedUserIndexFiles() {
+      throw new Error("not used");
+    },
     async listFolderChildren(folderId, pageToken) {
       if (folderId === "root" && !pageToken) {
         return {
@@ -68,6 +77,15 @@ function createDriveClient(): DriveClient {
       return { items: [] };
     },
     async ensurePaperManagerFolder() {
+      throw new Error("not used");
+    },
+    async uploadOrUpdateManagedIndex() {
+      throw new Error("not used");
+    },
+    async downloadManagedIndex() {
+      throw new Error("not used");
+    },
+    async downloadFileBytes() {
       throw new Error("not used");
     },
     async uploadOrUpdateIndexSqlite() {

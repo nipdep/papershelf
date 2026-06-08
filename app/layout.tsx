@@ -62,7 +62,7 @@ export default async function RootLayout({
       <body>
         <AutoIndexTrigger
           cacheKey={session?.user?.email ?? undefined}
-          enabled={Boolean(session?.user?.hasDriveAccess)}
+          enabled={Boolean(session?.user?.isOwner && session?.user?.hasDriveAccess)}
         />
         <div className="app-shell">
           <div className="app-frame">
@@ -90,7 +90,7 @@ export default async function RootLayout({
                       {session.user.email}
                       {session.user.isOwner ? " · owner" : ""}
                     </span>
-                    {session.user.hasDriveAccess ? (
+                    {session.user.isOwner && session.user.hasDriveAccess ? (
                       <form action={rebuildIndexesAction}>
                         <button
                           aria-label="Rebuild indexes"

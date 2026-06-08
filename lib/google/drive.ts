@@ -10,6 +10,8 @@ import { getGoogleApiKey } from "@/lib/env";
 import { DriveItem } from "@/lib/models";
 import { requireDriveAccess } from "@/lib/server/authz";
 
+export type ManagedIndexKind = "master" | "anyone" | "user";
+
 const DRIVE_FIELDS = [
   "id",
   "name",
@@ -19,11 +21,17 @@ const DRIVE_FIELDS = [
   "createdTime",
   "size",
   "webViewLink",
+  "appProperties",
   "capabilities(canEdit,canAddChildren,canDelete,canTrash,canRename,canMoveItemWithinDrive)",
-  "permissions(type,role,allowFileDiscovery)"
+  "permissions(id,type,role,allowFileDiscovery,emailAddress,domain)"
 ].join(",");
 
 const APP_DATA_CONFIG_NAME = "papershelf-config.json";
+const PAPER_MANAGER_FOLDER_NAME = ".paper-manager";
+const PAPER_MANAGER_USERS_FOLDER_NAME = "users";
+const MASTER_INDEX_FILE_NAME = "papershelf-master-index.sqlite";
+const ANYONE_INDEX_FILE_NAME = "papershelf-anyone-index.sqlite";
+const USER_INDEX_FILE_PREFIX = "papershelf-user-";
 
 function getDriveErrorStatus(error: unknown): number | undefined {
   if (
@@ -83,11 +91,30 @@ export interface DriveClient {
   getFileMetadata(fileId: string): Promise<DriveItem>;
   getIndexFileMetadata(rootFolderId: string): Promise<DriveItem | null>;
   discoverLibraryRootIds(): Promise<string[]>;
+  getCurrentUserPermissionId(): Promise<string | null>;
+  listAccessibleManagedIndexFiles(
+    input: { kind: "anyone" } | { kind: "user"; userId: string }
+  ): Promise<DriveItem[]>;
+  listManagedUserIndexFiles(rootFolderId: string): Promise<DriveItem[]>;
   listFolderChildren(
     folderId: string,
     pageToken?: string
   ): Promise<{ items: DriveItem[]; nextPageToken?: string }>;
   ensurePaperManagerFolder(rootFolderId: string): Promise<DriveItem>;
+  uploadOrUpdateManagedIndex(
+    rootFolderId: string,
+    input: {
+      kind: ManagedIndexKind;
+      bytes: Uint8Array;
+      userId?: string;
+      shareWithUserEmail?: string;
+    }
+  ): Promise<{ fileId: string }>;
+  downloadManagedIndex(
+    rootFolderId: string,
+    input: { kind: ManagedIndexKind; userId?: string }
+  ): Promise<Uint8Array | null>;
+  downloadFileBytes(fileId: string): Promise<Uint8Array>;
   uploadOrUpdateIndexSqlite(
     rootFolderId: string,
     bytes: Uint8Array
@@ -140,10 +167,14 @@ function mapDriveFile(file?: drive_v3.Schema$File | null): DriveItem {
         }
       : undefined,
     permissions: file.permissions?.map((permission) => ({
+      id: permission.id ?? undefined,
       type: permission.type ?? undefined,
       role: permission.role ?? undefined,
-      allowFileDiscovery: permission.allowFileDiscovery ?? undefined
-    }))
+      allowFileDiscovery: permission.allowFileDiscovery ?? undefined,
+      emailAddress: permission.emailAddress ?? undefined,
+      domain: permission.domain ?? undefined
+    })),
+    appProperties: file.appProperties ?? undefined
   };
 }
 
@@ -190,7 +221,73 @@ async function getPaperManagerFolder(
   drive: drive_v3.Drive,
   rootFolderId: string
 ): Promise<DriveItem | null> {
-  return findChildByName(drive, rootFolderId, ".paper-manager");
+  return findChildByName(drive, rootFolderId, PAPER_MANAGER_FOLDER_NAME);
+}
+
+async function getOrCreateUsersFolder(
+  drive: drive_v3.Drive,
+  rootFolderId: string
+): Promise<DriveItem> {
+  const paperManagerFolder = await getOrCreatePaperManagerFolder(drive, rootFolderId);
+  const existing = await findChildByName(drive, paperManagerFolder.id, PAPER_MANAGER_USERS_FOLDER_NAME);
+  if (existing) {
+    return existing;
+  }
+
+  const created = await drive.files.create({
+    requestBody: {
+      name: PAPER_MANAGER_USERS_FOLDER_NAME,
+      mimeType: "application/vnd.google-apps.folder",
+      parents: [paperManagerFolder.id]
+    },
+    fields: DRIVE_FIELDS,
+    supportsAllDrives: true
+  });
+
+  return mapDriveFile(created.data);
+}
+
+function getManagedIndexFileName(kind: ManagedIndexKind, userId?: string): string {
+  switch (kind) {
+    case "master":
+      return MASTER_INDEX_FILE_NAME;
+    case "anyone":
+      return ANYONE_INDEX_FILE_NAME;
+    case "user":
+      if (!userId) {
+        throw new AppError("INVALID_REQUEST", "userId is required for user indexes.", 400);
+      }
+      return `${USER_INDEX_FILE_PREFIX}${userId}.sqlite`;
+  }
+}
+
+async function getManagedIndexParentFolder(
+  drive: drive_v3.Drive,
+  rootFolderId: string,
+  kind: ManagedIndexKind
+): Promise<DriveItem | null> {
+  if (kind === "user") {
+    const paperManagerFolder = await getPaperManagerFolder(drive, rootFolderId);
+    if (!paperManagerFolder) {
+      return null;
+    }
+
+    return findChildByName(drive, paperManagerFolder.id, PAPER_MANAGER_USERS_FOLDER_NAME);
+  }
+
+  return getPaperManagerFolder(drive, rootFolderId);
+}
+
+async function getOrCreateManagedIndexParentFolder(
+  drive: drive_v3.Drive,
+  rootFolderId: string,
+  kind: ManagedIndexKind
+): Promise<DriveItem> {
+  if (kind === "user") {
+    return getOrCreateUsersFolder(drive, rootFolderId);
+  }
+
+  return getOrCreatePaperManagerFolder(drive, rootFolderId);
 }
 
 async function discoverLibraryRootIds(drive: drive_v3.Drive): Promise<string[]> {
@@ -225,19 +322,135 @@ async function findIndexFile(
   drive: drive_v3.Drive,
   paperManagerFolderId: string
 ): Promise<DriveItem | null> {
-  return findChildByName(drive, paperManagerFolderId, "index.sqlite");
+  return findChildByName(drive, paperManagerFolderId, MASTER_INDEX_FILE_NAME);
+}
+
+async function findManagedIndexFile(
+  drive: drive_v3.Drive,
+  rootFolderId: string,
+  input: { kind: ManagedIndexKind; userId?: string }
+): Promise<DriveItem | null> {
+  const folder = await getManagedIndexParentFolder(drive, rootFolderId, input.kind);
+  if (!folder) {
+    return null;
+  }
+
+  return findChildByName(drive, folder.id, getManagedIndexFileName(input.kind, input.userId));
 }
 
 async function getIndexFileForRoot(
   drive: drive_v3.Drive,
   rootFolderId: string
 ): Promise<DriveItem | null> {
-  const folder = await getPaperManagerFolder(drive, rootFolderId);
-  if (!folder) {
-    return null;
+  return findManagedIndexFile(drive, rootFolderId, { kind: "master" });
+}
+
+async function searchFilesByName(
+  drive: drive_v3.Drive,
+  name: string
+): Promise<DriveItem[]> {
+  const items: DriveItem[] = [];
+  let pageToken: string | undefined;
+
+  do {
+    const response = await drive.files.list({
+      q: `name = '${name.replace(/'/g, "\\'")}' and trashed = false`,
+      pageToken,
+      pageSize: 100,
+      fields: `nextPageToken,files(${DRIVE_FIELDS})`,
+      supportsAllDrives: true,
+      includeItemsFromAllDrives: true
+    });
+
+    items.push(...(response.data.files ?? []).map(mapDriveFile));
+    pageToken = response.data.nextPageToken ?? undefined;
+  } while (pageToken);
+
+  return items;
+}
+
+async function downloadDriveFileBytes(
+  drive: drive_v3.Drive,
+  fileId: string
+): Promise<Uint8Array> {
+  const response = await drive.files.get(
+    {
+      fileId,
+      alt: "media",
+      supportsAllDrives: true
+    },
+    {
+      responseType: "arraybuffer"
+    }
+  );
+
+  return new Uint8Array(response.data as ArrayBuffer);
+}
+
+async function ensureUserReadPermission(
+  drive: drive_v3.Drive,
+  fileId: string,
+  emailAddress: string
+) {
+  const existing = await drive.permissions.list({
+    fileId,
+    fields: "permissions(id,type,role,emailAddress)",
+    supportsAllDrives: true
+  });
+
+  const alreadyShared = (existing.data.permissions ?? []).some(
+    (permission) =>
+      permission.type === "user" &&
+      permission.role !== "none" &&
+      permission.emailAddress?.toLowerCase() === emailAddress.toLowerCase()
+  );
+
+  if (alreadyShared) {
+    return;
   }
 
-  return findIndexFile(drive, folder.id);
+  await drive.permissions.create({
+    fileId,
+    requestBody: {
+      type: "user",
+      role: "reader",
+      emailAddress
+    },
+    supportsAllDrives: true,
+    sendNotificationEmail: false
+  });
+}
+
+async function ensureAnyoneReadPermission(
+  drive: drive_v3.Drive,
+  fileId: string
+) {
+  const existing = await drive.permissions.list({
+    fileId,
+    fields: "permissions(id,type,role,allowFileDiscovery)",
+    supportsAllDrives: true
+  });
+
+  const alreadyShared = (existing.data.permissions ?? []).some(
+    (permission) =>
+      permission.type === "anyone" &&
+      permission.role !== "none" &&
+      permission.allowFileDiscovery === false
+  );
+
+  if (alreadyShared) {
+    return;
+  }
+
+  await drive.permissions.create({
+    fileId,
+    requestBody: {
+      type: "anyone",
+      role: "reader",
+      allowFileDiscovery: false
+    },
+    supportsAllDrives: true
+  });
 }
 
 async function getAppConfigFile(drive: drive_v3.Drive): Promise<DriveItem | null> {
@@ -315,6 +528,54 @@ function createDriveClient(
       }
     },
 
+    async getCurrentUserPermissionId() {
+      if (accessMode === "public") {
+        return null;
+      }
+
+      try {
+        const response = await drive.about.get({
+          fields: "user(permissionId,emailAddress)"
+        });
+        return response.data.user?.permissionId ?? null;
+      } catch (error) {
+        throw toAuthenticationError(error) ?? error;
+      }
+    },
+
+    async listAccessibleManagedIndexFiles(input) {
+      try {
+        return await searchFilesByName(
+          drive,
+          getManagedIndexFileName(input.kind, "userId" in input ? input.userId : undefined)
+        );
+      } catch (error) {
+        throw toAuthenticationError(error) ?? error;
+      }
+    },
+
+    async listManagedUserIndexFiles(rootFolderId) {
+      const usersFolder = await getManagedIndexParentFolder(drive, rootFolderId, "user");
+      if (!usersFolder) {
+        return [];
+      }
+
+      const items: DriveItem[] = [];
+      let pageToken: string | undefined;
+      do {
+        const page = await this.listFolderChildren(usersFolder.id, pageToken);
+        items.push(
+          ...page.items.filter(
+            (item) =>
+              item.name.startsWith(USER_INDEX_FILE_PREFIX) && item.name.endsWith(".sqlite")
+          )
+        );
+        pageToken = page.nextPageToken;
+      } while (pageToken);
+
+      return items;
+    },
+
     async listFolderChildren(folderId, pageToken) {
       let response;
       try {
@@ -344,16 +605,26 @@ function createDriveClient(
       return getOrCreatePaperManagerFolder(drive, rootFolderId);
     },
 
-    async uploadOrUpdateIndexSqlite(rootFolderId, bytes) {
+    async uploadOrUpdateManagedIndex(rootFolderId, input) {
       if (accessMode === "public") {
         throw createReadOnlyDriveError();
       }
-      const folder = await getOrCreatePaperManagerFolder(drive, rootFolderId);
-      const existing = await findIndexFile(drive, folder.id);
+
+      const folder = await getOrCreateManagedIndexParentFolder(drive, rootFolderId, input.kind);
+      const existing = await findManagedIndexFile(drive, rootFolderId, {
+        kind: input.kind,
+        userId: input.userId
+      });
       const media = {
         mimeType: "application/octet-stream",
-        body: Readable.from(Buffer.from(bytes))
+        body: Readable.from(Buffer.from(input.bytes))
       };
+
+      if (input.kind === "user" && !input.userId) {
+        throw new AppError("INVALID_REQUEST", "userId is required for user indexes.", 400);
+      }
+
+      let fileId: string;
 
       if (existing) {
         const updated = await drive.files.update({
@@ -362,39 +633,58 @@ function createDriveClient(
           fields: "id",
           supportsAllDrives: true
         });
-        return { fileId: updated.data.id ?? existing.id };
+        fileId = updated.data.id ?? existing.id;
+      } else {
+        const created = await drive.files.create({
+          requestBody: {
+            name: getManagedIndexFileName(input.kind, input.userId),
+            parents: [folder.id]
+          },
+          media,
+          fields: "id",
+          supportsAllDrives: true
+        });
+        fileId = created.data.id ?? randomUUID();
       }
 
-      const created = await drive.files.create({
-        requestBody: {
-          name: "index.sqlite",
-          parents: [folder.id]
-        },
-        media,
-        fields: "id",
-        supportsAllDrives: true
-      });
-      return { fileId: created.data.id ?? randomUUID() };
+      if (input.kind === "anyone") {
+        await ensureAnyoneReadPermission(drive, fileId);
+      } else if (input.kind === "user") {
+        if (!input.shareWithUserEmail) {
+          throw new AppError(
+            "INVALID_REQUEST",
+            "shareWithUserEmail is required for user indexes.",
+            400
+          );
+        }
+        await ensureUserReadPermission(drive, fileId, input.shareWithUserEmail);
+      }
+
+      return { fileId };
     },
 
-    async downloadIndexSqlite(rootFolderId) {
-      const existing = await getIndexFileForRoot(drive, rootFolderId);
+    async downloadManagedIndex(rootFolderId, input) {
+      const existing = await findManagedIndexFile(drive, rootFolderId, input);
       if (!existing) {
         return null;
       }
 
-      const response = await drive.files.get(
-        {
-          fileId: existing.id,
-          alt: "media",
-          supportsAllDrives: true
-        },
-        {
-          responseType: "arraybuffer"
-        }
-      );
+      return downloadDriveFileBytes(drive, existing.id);
+    },
 
-      return new Uint8Array(response.data as ArrayBuffer);
+    async downloadFileBytes(fileId) {
+      return downloadDriveFileBytes(drive, fileId);
+    },
+
+    async uploadOrUpdateIndexSqlite(rootFolderId, bytes) {
+      return this.uploadOrUpdateManagedIndex(rootFolderId, {
+        kind: "master",
+        bytes
+      });
+    },
+
+    async downloadIndexSqlite(rootFolderId) {
+      return this.downloadManagedIndex(rootFolderId, { kind: "master" });
     },
 
     async readAppConfig() {

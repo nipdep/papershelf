@@ -8,6 +8,7 @@ declare module "next-auth" {
       isOwner: boolean;
       hasDriveAccess: boolean;
       accessToken?: string;
+      drivePermissionId?: string;
       authError?: "RefreshAccessTokenError";
     };
   }
@@ -21,6 +22,7 @@ declare module "next-auth/jwt" {
     authError?: "RefreshAccessTokenError";
     isOwner?: boolean;
     hasDriveAccess?: boolean;
+    drivePermissionId?: string;
     grantedScope?: string;
   }
 }

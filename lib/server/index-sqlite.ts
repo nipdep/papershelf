@@ -66,9 +66,31 @@ function hasColumn(db: Database, tableName: string, columnName: string): boolean
   return rows.some((row) => String(row.name) === columnName);
 }
 
+function parseSharedUsers(value: SqlValue) {
+  if (typeof value !== "string" || value.trim().length === 0) {
+    return undefined;
+  }
+
+  try {
+    const parsed = JSON.parse(value) as Array<{ id?: string; emailAddress?: string }>;
+    return parsed
+      .filter((entry): entry is { id: string; emailAddress?: string } => typeof entry.id === "string")
+      .map((entry) => ({
+        id: entry.id,
+        emailAddress: entry.emailAddress
+      }));
+  } catch {
+    return undefined;
+  }
+}
+
 export async function createIndexSqlite(input: {
   folders: IndexedFolder[];
   papers: IndexedPaper[];
+  metadata?: Pick<
+    LibraryIndexData,
+    "generatedAt" | "sourceLibraryId" | "sourceLibraryName" | "indexKind" | "userId"
+  >;
 }) {
   return withDb((db) => {
     db.exec(`
@@ -84,7 +106,9 @@ export async function createIndexSqlite(input: {
         path TEXT NOT NULL,
         depth INTEGER NOT NULL,
         modified_time TEXT,
-        created_time TEXT
+        created_time TEXT,
+        access_level TEXT NOT NULL DEFAULT 'restricted',
+        shared_users_json TEXT
       );
 
       CREATE INDEX IF NOT EXISTS idx_folders_parent ON folders(parent_folder_id);
@@ -103,6 +127,7 @@ export async function createIndexSqlite(input: {
         web_view_link TEXT,
         access_level TEXT NOT NULL DEFAULT 'restricted',
         indexed_at TEXT NOT NULL,
+        shared_users_json TEXT,
         FOREIGN KEY (drive_folder_id) REFERENCES folders(drive_folder_id)
       );
 
@@ -113,17 +138,40 @@ export async function createIndexSqlite(input: {
 
     db.run(
       `INSERT OR REPLACE INTO app_meta (key, value) VALUES
-        ('schema_version', '2'),
+        ('schema_version', '3'),
         ('generated_at', ?),
         ('app_name', 'drive-paper-library');`,
-      [new Date().toISOString()]
+      [input.metadata?.generatedAt ?? new Date().toISOString()]
     );
+
+    if (input.metadata?.sourceLibraryId) {
+      db.run("INSERT OR REPLACE INTO app_meta (key, value) VALUES ('source_library_id', ?);", [
+        input.metadata.sourceLibraryId
+      ]);
+    }
+    if (input.metadata?.sourceLibraryName) {
+      db.run(
+        "INSERT OR REPLACE INTO app_meta (key, value) VALUES ('source_library_name', ?);",
+        [input.metadata.sourceLibraryName]
+      );
+    }
+    if (input.metadata?.indexKind) {
+      db.run("INSERT OR REPLACE INTO app_meta (key, value) VALUES ('index_kind', ?);", [
+        input.metadata.indexKind
+      ]);
+    }
+    if (input.metadata?.userId) {
+      db.run("INSERT OR REPLACE INTO app_meta (key, value) VALUES ('user_id', ?);", [
+        input.metadata.userId
+      ]);
+    }
 
     for (const folder of input.folders) {
       db.run(
         `INSERT INTO folders (
-          drive_folder_id, parent_folder_id, name, path, depth, modified_time, created_time
-        ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+          drive_folder_id, parent_folder_id, name, path, depth, modified_time, created_time,
+          access_level, shared_users_json
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           folder.driveFolderId,
           folder.parentFolderId,
@@ -131,7 +179,9 @@ export async function createIndexSqlite(input: {
           folder.path,
           folder.depth,
           folder.modifiedTime ?? null,
-          folder.createdTime ?? null
+          folder.createdTime ?? null,
+          folder.accessLevel ?? "restricted",
+          folder.sharedUsers?.length ? JSON.stringify(folder.sharedUsers) : null
         ]
       );
     }
@@ -140,8 +190,9 @@ export async function createIndexSqlite(input: {
       db.run(
         `INSERT INTO papers (
           drive_file_id, drive_folder_id, title, file_name, path, mime_type,
-          modified_time, created_time, size_bytes, web_view_link, access_level, indexed_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          modified_time, created_time, size_bytes, web_view_link, access_level, indexed_at,
+          shared_users_json
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           paper.driveFileId,
           paper.driveFolderId,
@@ -154,7 +205,8 @@ export async function createIndexSqlite(input: {
           paper.sizeBytes ?? null,
           paper.webViewLink ?? null,
           paper.accessLevel,
-          paper.indexedAt
+          paper.indexedAt,
+          paper.sharedUsers?.length ? JSON.stringify(paper.sharedUsers) : null
         ]
       );
     }
@@ -189,10 +241,15 @@ export async function parseIndexSqlite(bytes: Uint8Array): Promise<LibraryIndexD
   return withDb((db) => {
     try {
       const hasAccessLevel = hasColumn(db, "papers", "access_level");
+      const hasFolderAccessLevel = hasColumn(db, "folders", "access_level");
+      const hasFolderSharedUsers = hasColumn(db, "folders", "shared_users_json");
+      const hasPaperSharedUsers = hasColumn(db, "papers", "shared_users_json");
       const folderRows = queryRows(
         db,
         `
-        SELECT drive_folder_id, parent_folder_id, name, path, depth, modified_time, created_time
+        SELECT drive_folder_id, parent_folder_id, name, path, depth, modified_time, created_time,
+               ${hasFolderAccessLevel ? "access_level" : "'restricted' AS access_level"},
+               ${hasFolderSharedUsers ? "shared_users_json" : "NULL AS shared_users_json"}
         FROM folders
         ORDER BY depth, path
       `
@@ -204,7 +261,8 @@ export async function parseIndexSqlite(bytes: Uint8Array): Promise<LibraryIndexD
         SELECT drive_file_id, drive_folder_id, title, file_name, path, mime_type,
                modified_time, created_time, size_bytes, web_view_link,
                ${hasAccessLevel ? "access_level" : "'restricted' AS access_level"},
-               indexed_at
+               indexed_at,
+               ${hasPaperSharedUsers ? "shared_users_json" : "NULL AS shared_users_json"}
         FROM papers
         ORDER BY title
       `
@@ -217,7 +275,12 @@ export async function parseIndexSqlite(bytes: Uint8Array): Promise<LibraryIndexD
         path: String(row.path),
         depth: Number(row.depth),
         modifiedTime: row.modified_time ? String(row.modified_time) : undefined,
-        createdTime: row.created_time ? String(row.created_time) : undefined
+        createdTime: row.created_time ? String(row.created_time) : undefined,
+        accessLevel:
+          row.access_level === "anyone_with_link" || row.access_level === "public_on_web"
+            ? row.access_level
+            : "restricted",
+        sharedUsers: parseSharedUsers(row.shared_users_json)
       }));
 
       const papers: IndexedPaper[] = paperRows.map((row) => ({
@@ -235,11 +298,21 @@ export async function parseIndexSqlite(bytes: Uint8Array): Promise<LibraryIndexD
           row.access_level === "anyone_with_link" || row.access_level === "public_on_web"
             ? row.access_level
             : "restricted",
-        indexedAt: String(row.indexed_at)
+        indexedAt: String(row.indexed_at),
+        sharedUsers: parseSharedUsers(row.shared_users_json)
       }));
 
       return {
         generatedAt: getSingleStringValue(db, "generated_at"),
+        sourceLibraryId: getSingleStringValue(db, "source_library_id"),
+        sourceLibraryName: getSingleStringValue(db, "source_library_name"),
+        indexKind:
+          getSingleStringValue(db, "index_kind") === "master" ||
+          getSingleStringValue(db, "index_kind") === "anyone" ||
+          getSingleStringValue(db, "index_kind") === "user"
+            ? (getSingleStringValue(db, "index_kind") as LibraryIndexData["indexKind"])
+            : undefined,
+        userId: getSingleStringValue(db, "user_id"),
         folders,
         papers
       };

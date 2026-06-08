@@ -5,7 +5,7 @@ import { notFound, redirect } from "next/navigation";
 import { unstable_rethrow } from "next/dist/client/components/unstable-rethrow";
 
 import { auth } from "@/auth";
-import { ConnectDriveButton } from "@/components/auth-buttons";
+import { ConnectDriveButton, SignInButton } from "@/components/auth-buttons";
 import { FolderTree } from "@/components/folder-tree";
 import { PaperTable } from "@/components/paper-table";
 import { ViewModeSwitcher } from "@/components/view-mode-switcher";
@@ -93,7 +93,7 @@ export default async function HomePage({
 
   const hasValidSession = Boolean(session?.user?.email && !session?.user?.authError);
   const signedInSession = hasValidSession ? session! : null;
-  const canManageLibraries = Boolean(signedInSession?.user.hasDriveAccess);
+  const canManageLibraries = Boolean(signedInSession?.user.isOwner && signedInSession.user.hasDriveAccess);
 
   if (!hasValidSession && !canBrowsePublicLibraries) {
     return (
@@ -270,20 +270,44 @@ export default async function HomePage({
         <section className="card glass-card stack">
           <div className="title-cluster">
             <p className="eyebrow">
-              {session?.user?.authError ? "Reconnect Google Drive" : "View more with Google"}
+              {session?.user?.isOwner
+                ? session?.user?.authError
+                  ? "Reconnect Google Drive"
+                  : "Connect Google Drive"
+                : session?.user?.email
+                  ? "Signed in"
+                  : "Sign in with Google"}
             </p>
-            <h2>Public papers are open below. Connect Google Drive to view every paper you can access.</h2>
+            <h2>
+              {session?.user?.isOwner
+                ? "Connect Google Drive to rebuild and publish library indexes."
+                : "Browse published papers below with a plain Google sign-in."}
+            </h2>
             <p className="muted">
-              Papers shared as <strong>Anyone with the link</strong> show up here without a login.
-              To get the full library view for your Google account, connect Drive from this panel.
+              {session?.user?.isOwner ? (
+                <>
+                  Owner sessions need Drive access to rebuild and publish library indexes.
+                </>
+              ) : (
+                <>
+                  Papers shared as <strong>Anyone with the link</strong> appear below without Drive
+                  permission prompts. Viewer-specific indexes appear after the owner publishes them.
+                </>
+              )}
             </p>
           </div>
-          <div className="hero-actions">
-            <ConnectDriveButton
-              label={session?.user?.authError ? "Reconnect Google Drive" : "Log in with Google"}
-              redirectTo="/"
-            />
-          </div>
+          {!session?.user?.email || session?.user?.isOwner ? (
+            <div className="hero-actions">
+              {session?.user?.isOwner ? (
+                <ConnectDriveButton
+                  label={session?.user?.authError ? "Reconnect Google Drive" : "Connect Google Drive"}
+                  redirectTo="/"
+                />
+              ) : (
+                <SignInButton />
+              )}
+            </div>
+          ) : null}
         </section>
       ) : null}
       <section className={`finder-layout ${layoutMode === "list" ? "finder-layout-list" : ""}`}>
@@ -300,7 +324,7 @@ export default async function HomePage({
             folders={explorer.folders}
             pageMode="root"
             query={globalQuery}
-            rebuildAction={canManageLibraries ? rebuildAction : undefined}
+            rebuildAction={signedInSession?.user.isOwner && signedInSession.user.hasDriveAccess ? rebuildAction : undefined}
             trashFolderAction={canManageLibraries ? trashFolderAction : undefined}
             updateFolderAction={canManageLibraries ? updateFolderAction : undefined}
             uploadAction={canManageLibraries ? uploadAction : undefined}
