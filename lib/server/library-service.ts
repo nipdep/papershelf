@@ -326,15 +326,31 @@ async function loadAccessibleDerivedIndexesForSession(
 ): Promise<Map<string, LibraryIndexData[]>> {
   const driveClient = await createSessionDriveClient(session);
   const currentUserId = await driveClient.getCurrentUserPermissionId();
-  const files = [
-    ...(await driveClient.listAccessibleManagedIndexFiles({ kind: "anyone" })),
-    ...(currentUserId
-      ? await driveClient.listAccessibleManagedIndexFiles({ kind: "user", userId: currentUserId })
-      : [])
-  ];
-
   const grouped = new Map<string, LibraryIndexData[]>();
-  for (const file of files) {
+  const publicCatalog = await loadPublicCatalog(driveClient);
+
+  for (const entry of publicCatalog) {
+    try {
+      const index = await parseIndexSqlite(await driveClient.downloadFileBytes(entry.anyoneIndexFileId));
+      const libraryId = index.sourceLibraryId ?? entry.libraryId;
+      const bucket = grouped.get(libraryId) ?? [];
+      bucket.push(index);
+      grouped.set(libraryId, bucket);
+    } catch {
+      continue;
+    }
+  }
+
+  if (!currentUserId) {
+    return grouped;
+  }
+
+  const userFiles = await driveClient.listAccessibleManagedIndexFiles({
+    kind: "user",
+    userId: currentUserId
+  });
+
+  for (const file of userFiles) {
     try {
       const bytes = await driveClient.downloadFileBytes(file.id);
       const index = await parseIndexSqlite(bytes);
