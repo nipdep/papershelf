@@ -96,6 +96,26 @@ export default async function HomePage({
   const canManageLibraries = Boolean(signedInSession?.user.isOwner && signedInSession.user.hasDriveAccess);
   const isPublicOnlyView = !signedInSession?.user.hasDriveAccess;
 
+  if (!hasValidSession && !canBrowsePublicLibraries) {
+    return (
+      <main className="workspace hero-center">
+        <section className="card hero-panel glass-card stack">
+          <div className="title-cluster">
+            <p className="eyebrow">Slick but practical</p>
+            <h1>Browse and manage research papers directly from Google Drive.</h1>
+            <p>
+              Drive keeps the files, folders, and sharing model. Papershelf gives you a
+              cleaner library view with search, indexing, and contextual file actions.
+            </p>
+          </div>
+          <div className="hero-actions">
+            <ConnectDriveButton label="Connect Google Drive" redirectTo="/" />
+          </div>
+        </section>
+      </main>
+    );
+  }
+
   if (session?.user?.authError && !canBrowsePublicLibraries) {
     return (
       <main className="workspace hero-center">
