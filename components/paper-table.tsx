@@ -76,8 +76,7 @@ export function PaperTable({
   viewMode,
   selectedFolderId,
   query,
-  showLibraryName,
-  emptyMessage
+  showLibraryName
 }: {
   papers: ExplorerPaper[];
   canEdit: boolean;
@@ -86,7 +85,6 @@ export function PaperTable({
   selectedFolderId?: string;
   query?: string;
   showLibraryName?: boolean;
-  emptyMessage?: string;
 }) {
   const [sortKey, setSortKey] = useState<SortKey | null>(null);
   const [sortDirection, setSortDirection] = useState<SortDirection | null>(null);
@@ -161,7 +159,7 @@ export function PaperTable({
     return (
       <section className="finder-list-shell">
         <div className="empty-panel">
-          <p className="muted">{emptyMessage ?? "No papers match this folder yet."}</p>
+          <p className="muted">No papers match this folder yet.</p>
         </div>
       </section>
     );
