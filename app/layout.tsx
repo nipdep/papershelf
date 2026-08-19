@@ -6,7 +6,6 @@ import type { Metadata } from "next";
 import { ReactNode } from "react";
 
 import { auth } from "@/auth";
-import { AutoIndexTrigger } from "@/components/auto-index-trigger";
 import { SignOutButton } from "@/components/auth-buttons";
 import { HeaderSearch } from "@/components/header-search";
 import { asAppError } from "@/lib/errors";
@@ -60,10 +59,6 @@ export default async function RootLayout({
   return (
     <html lang="en">
       <body>
-        <AutoIndexTrigger
-          cacheKey={session?.user?.email ?? undefined}
-          enabled={Boolean(session?.user?.isOwner && session?.user?.hasDriveAccess)}
-        />
         <div className="app-shell">
           <div className="app-frame">
             <header className="frame-header">
