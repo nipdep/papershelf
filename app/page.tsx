@@ -1,66 +1,23 @@
 import Link from "next/link";
 import { revalidatePath } from "next/cache";
 import { cookies } from "next/headers";
-import { notFound, redirect } from "next/navigation";
-import { unstable_rethrow } from "next/dist/client/components/unstable-rethrow";
 
 import { auth } from "@/auth";
-import { ConnectDriveButton } from "@/components/auth-buttons";
-import { FolderTree } from "@/components/folder-tree";
-import { PaperTable } from "@/components/paper-table";
-import { ViewModeSwitcher } from "@/components/view-mode-switcher";
-import { asAppError } from "@/lib/errors";
+import { ConnectDriveButton, SignInButton } from "@/components/auth-buttons";
+import { CachedExplorer } from "@/components/cached-explorer";
 import {
   isConfiguredForGoogleAuth,
   isConfiguredForPublicDriveBrowsing
 } from "@/lib/env";
-import { ExplorerFolder } from "@/lib/models";
 import { requireSession } from "@/lib/server/authz";
 import {
   createSubfolder,
-  loadExplorerDataForPublicAccess,
-  loadExplorerDataForSession,
   rebuildLibraryIndex,
   trashFolderInLibrary,
   updateFolderMetadata,
   uploadPaper
 } from "@/lib/server/library-service";
 
-function previewUrlForPaper(driveFileId: string) {
-  return `https://drive.google.com/file/d/${driveFileId}/preview`;
-}
-
-function collectDescendantFolderIds(
-  folders: ExplorerFolder[],
-  rootFolderId?: string
-): Set<string> {
-  if (!rootFolderId) {
-    return new Set(folders.map((folder) => folder.driveFolderId));
-  }
-
-  const byParent = new Map<string, string[]>();
-  for (const folder of folders) {
-    const key = folder.parentFolderId ?? "";
-    const bucket = byParent.get(key) ?? [];
-    bucket.push(folder.driveFolderId);
-    byParent.set(key, bucket);
-  }
-
-  const visible = new Set<string>();
-  const queue = [rootFolderId];
-  while (queue.length > 0) {
-    const current = queue.shift();
-    if (!current || visible.has(current)) {
-      continue;
-    }
-    visible.add(current);
-    for (const childId of byParent.get(current) ?? []) {
-      queue.push(childId);
-    }
-  }
-
-  return visible;
-}
 
 export default async function HomePage({
   searchParams
@@ -94,7 +51,6 @@ export default async function HomePage({
   const hasValidSession = Boolean(session?.user?.email && !session?.user?.authError);
   const signedInSession = hasValidSession ? session! : null;
   const canManageLibraries = Boolean(signedInSession?.user.isOwner && signedInSession.user.hasDriveAccess);
-  const isPublicOnlyView = !signedInSession?.user.hasDriveAccess;
 
   if (!hasValidSession && !canBrowsePublicLibraries) {
     return (
@@ -156,69 +112,26 @@ export default async function HomePage({
     );
   }
 
-  let explorer;
-  try {
-    if (signedInSession?.user.hasDriveAccess) {
-      explorer = await loadExplorerDataForSession(signedInSession);
-    } else {
-      explorer = await loadExplorerDataForPublicAccess();
-    }
-  } catch (error) {
-    unstable_rethrow(error);
-    const appError = asAppError(error);
-    if (appError.code === "NOT_AUTHENTICATED") {
-      if (canBrowsePublicLibraries) {
-        notFound();
-      }
-      redirect("/");
-    }
-    throw appError;
-  }
+  const cacheCookieStore = await cookies();
+  const cachedLayoutMode =
+    cacheCookieStore.get("papershelf-layout")?.value === "list" ? "list" : "split";
+  const browserCacheKey = signedInSession?.user.email
+    ? `user:${signedInSession.user.email.toLowerCase()}`
+    : "public";
 
-  if (
-    !hasValidSession &&
-    (folderId || selectedPaperId) &&
-    !explorer.folders.some((folder) => folder.driveFolderId === folderId) &&
-    !explorer.papers.some((paper) => paper.driveFileId === selectedPaperId)
-  ) {
-    notFound();
-  }
-
-  const cookieStore = await cookies();
-  const layoutMode = cookieStore.get("papershelf-layout")?.value === "list" ? "list" : "split";
-  const isViewerWithDrive = Boolean(signedInSession?.user.hasDriveAccess && !signedInSession.user.isOwner);
-  const folderEmptyMessage = !signedInSession
-    ? "No public folders are available yet."
-    : isViewerWithDrive
-      ? "No public or privately shared folders are available yet."
-      : canManageLibraries
-        ? "No indexed folders."
-        : "No public folders are available yet. Connect Google Drive to load folders shared privately with you.";
-  const paperEmptyMessage = !signedInSession
-    ? "No public papers match this folder yet."
-    : isViewerWithDrive
-      ? "No public or privately shared papers match this folder yet."
-      : canManageLibraries
-        ? "No papers match this folder yet."
-        : "No public papers match this folder yet. Connect Google Drive to load papers shared privately with you.";
-  const visibleFolderIds = collectDescendantFolderIds(explorer.folders, folderId);
-  const visiblePapers = explorer.papers.filter((paper) => {
-    const matchesFolder = folderId ? visibleFolderIds.has(paper.driveFolderId) : true;
-    const matchesQuery = globalQuery
-      ? [paper.title, paper.fileName, paper.path, paper.libraryName]
-          .join(" ")
-          .toLowerCase()
-          .includes(globalQuery)
-      : true;
-    return matchesFolder && matchesQuery;
-  });
-  const selectedFolder = folderId
-    ? explorer.folders.find((folder) => folder.driveFolderId === folderId)
-    : undefined;
-  const selectedPaper = selectedPaperId
-    ? visiblePapers.find((paper) => paper.driveFileId === selectedPaperId) ??
-      explorer.papers.find((paper) => paper.driveFileId === selectedPaperId)
-    : undefined;
+  return (
+    <CachedExplorer
+      cacheKey={browserCacheKey}
+      canManageLibraries={canManageLibraries}
+      canRebuild={Boolean(signedInSession?.user.isOwner && signedInSession.user.hasDriveAccess)}
+      createFolderAction={canManageLibraries ? createFolderAction : undefined}
+      layoutMode={cachedLayoutMode}
+      rebuildAction={rebuildAction}
+      trashFolderAction={canManageLibraries ? trashFolderAction : undefined}
+      updateFolderAction={canManageLibraries ? updateFolderAction : undefined}
+      uploadAction={canManageLibraries ? uploadAction : undefined}
+    />
+  );
 
   async function rebuildAction(formData: FormData) {
     "use server";
@@ -280,153 +193,4 @@ export default async function HomePage({
     revalidatePath("/");
   }
 
-  return (
-    <main className="workspace workspace-finder">
-      {isPublicOnlyView ? (
-        <section className="card glass-card stack">
-          <div className="title-cluster">
-            <p className="eyebrow">
-              {session?.user?.isOwner
-                ? session?.user?.authError
-                  ? "Reconnect Google Drive"
-                  : "Connect Google Drive"
-                : session?.user?.email
-                  ? "See privately shared papers"
-                  : "See privately shared papers"}
-            </p>
-            <h2>
-              {session?.user?.isOwner
-                ? "Connect Google Drive to rebuild and publish library indexes."
-                : "Browse public papers below, then connect Google Drive to unlock papers shared just with you."}
-            </h2>
-            <p className="muted">
-              {session?.user?.isOwner ? (
-                <>
-                  Owner sessions need Drive access to rebuild and publish library indexes.
-                </>
-              ) : (
-                <>
-                  Papers shared as <strong>Anyone with the link</strong> appear below right away.
-                  After you connect Google Drive, Papershelf can also merge in papers and folders
-                  shared privately with your Google account.
-                </>
-              )}
-            </p>
-          </div>
-          {!session?.user?.isOwner ? (
-            <div className="hero-actions">
-              {session?.user?.isOwner ? (
-                <ConnectDriveButton
-                  label={session?.user?.authError ? "Reconnect Google Drive" : "Connect Google Drive"}
-                  redirectTo="/"
-                />
-              ) : (
-                <ConnectDriveButton
-                  label={session?.user?.email ? "Connect Google Drive" : "Log in with Google Drive"}
-                  redirectTo="/"
-                />
-              )}
-            </div>
-          ) : (
-            <div className="hero-actions">
-              <ConnectDriveButton
-                label={session?.user?.authError ? "Reconnect Google Drive" : "Connect Google Drive"}
-                redirectTo="/"
-              />
-            </div>
-          )}
-        </section>
-      ) : null}
-      <section className={`finder-layout ${layoutMode === "list" ? "finder-layout-list" : ""}`}>
-        <aside className="finder-sidebar">
-          <div className="pane-header finder-sidebar-header">
-            <div className="pane-title">
-              <p className="eyebrow finder-sidebar-eyebrow">Library</p>
-            </div>
-          </div>
-          <FolderTree
-            canEdit={canManageLibraries}
-            createFolderAction={canManageLibraries ? createFolderAction : undefined}
-            currentFolderId={folderId}
-            emptyMessage={folderEmptyMessage}
-            folders={explorer.folders}
-            pageMode="root"
-            query={globalQuery}
-            rebuildAction={signedInSession?.user.isOwner && signedInSession.user.hasDriveAccess ? rebuildAction : undefined}
-            trashFolderAction={canManageLibraries ? trashFolderAction : undefined}
-            updateFolderAction={canManageLibraries ? updateFolderAction : undefined}
-            uploadAction={canManageLibraries ? uploadAction : undefined}
-          />
-        </aside>
-
-        <section className="finder-main">
-          <div className="finder-section-head">
-            <div className="title-cluster">
-              <p className="eyebrow">Collection</p>
-              <h2>{selectedFolder ? selectedFolder.name : "All Libraries"}</h2>
-            </div>
-            <div className="mini-actions">
-              <ViewModeSwitcher value={layoutMode} />
-            </div>
-          </div>
-
-          <PaperTable
-            canEdit={false}
-            emptyMessage={paperEmptyMessage}
-            papers={visiblePapers}
-            selectedPaperId={selectedPaper?.driveFileId}
-            selectedFolderId={selectedFolder?.driveFolderId}
-            showLibraryName={true}
-            query={globalQuery}
-            viewMode={layoutMode}
-          />
-        </section>
-
-        {layoutMode === "split" ? (
-          <aside className="finder-preview">
-            {selectedPaper ? (
-              <div className="preview-shell">
-                <div className="preview-header">
-                  <div className="preview-title">
-                    <strong>{selectedPaper.title}</strong>
-                    <span>
-                      {selectedPaper.libraryName} · {selectedPaper.fileName}
-                    </span>
-                  </div>
-                  <div className="mini-actions">
-                    <Link
-                      className="button button-secondary"
-                      href={`/library/${selectedPaper.libraryId}/paper/${selectedPaper.driveFileId}`}
-                    >
-                      Open
-                    </Link>
-                    {selectedPaper.webViewLink ? (
-                      <a
-                        className="button button-ghost"
-                        href={selectedPaper.webViewLink}
-                        rel="noreferrer"
-                        target="_blank"
-                      >
-                        Drive
-                      </a>
-                    ) : null}
-                  </div>
-                </div>
-                <iframe
-                  className="preview-frame"
-                  src={previewUrlForPaper(selectedPaper.driveFileId)}
-                  title={selectedPaper.title}
-                />
-              </div>
-            ) : (
-              <div className="preview-empty">
-                <strong>Preview</strong>
-                <span className="muted">Select a paper from the list to preview it here.</span>
-              </div>
-            )}
-          </aside>
-        ) : null}
-      </section>
-    </main>
-  );
 }

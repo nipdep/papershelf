@@ -32,7 +32,6 @@ export function FolderTree({
   currentFolderId,
   query,
   canEdit,
-  emptyMessage,
   createFolderAction,
   rebuildAction,
   uploadAction,
@@ -45,7 +44,6 @@ export function FolderTree({
   currentFolderId?: string;
   query?: string;
   canEdit: boolean;
-  emptyMessage?: string;
   createFolderAction?: FolderAction;
   rebuildAction?: FolderAction;
   uploadAction?: FolderAction;
@@ -160,7 +158,7 @@ export function FolderTree({
   }, [openMenuId]);
 
   if (rootFolders.length === 0) {
-    return <p className="muted">{emptyMessage ?? "No indexed folders."}</p>;
+    return <p className="muted">No indexed folders.</p>;
   }
 
   const toggle = (folderId: string) => {
