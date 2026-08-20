@@ -29,6 +29,7 @@ const DRIVE_FIELDS = [
 const APP_DATA_CONFIG_NAME = "papershelf-config.json";
 const PAPER_MANAGER_FOLDER_NAME = ".paper-manager";
 const PAPER_MANAGER_USERS_FOLDER_NAME = "users";
+const PAPER_MANAGER_ANNOTATIONS_FOLDER_NAME = "annotations";
 const MASTER_INDEX_FILE_NAME = "papershelf-master-index.sqlite";
 const ANYONE_INDEX_FILE_NAME = "papershelf-anyone-index.sqlite";
 const USER_INDEX_FILE_PREFIX = "papershelf-user-";
@@ -119,8 +120,10 @@ export interface DriveClient {
     rootFolderId: string,
     input: { kind: ManagedIndexKind; userId?: string }
   ): Promise<Uint8Array | null>;
-  downloadFileBytes(fileId: string): Promise<Uint8Array>;
+  downloadFileBytes(fileId: string): Promise<any>;
   downloadFileText(fileId: string): Promise<string>;
+  downloadPaperAnnotations(rootFolderId: string, driveFileId: string): Promise<string | null>;
+  uploadPaperAnnotations(rootFolderId: string, driveFileId: string, json: string): Promise<{ fileId: string }>;
   uploadOrUpdatePublicCatalog(json: string): Promise<{ fileId: string }>;
   uploadOrUpdatePublicLibraryManifest(
     rootFolderId: string,
@@ -258,6 +261,9 @@ async function getOrCreateUsersFolder(
 
   return mapDriveFile(created.data);
 }
+
+async function getOrCreateAnnotationsFolder(drive: drive_v3.Drive, rootFolderId: string): Promise<DriveItem> { const manager = await getOrCreatePaperManagerFolder(drive, rootFolderId); const existing = await findChildByName(drive, manager.id, PAPER_MANAGER_ANNOTATIONS_FOLDER_NAME); if (existing) return existing; const created = await drive.files.create({ requestBody: { name: PAPER_MANAGER_ANNOTATIONS_FOLDER_NAME, mimeType: "application/vnd.google-apps.folder", parents: [manager.id] }, fields: DRIVE_FIELDS, supportsAllDrives: true }); return mapDriveFile(created.data); }
+async function findPaperAnnotationsFile(drive: drive_v3.Drive, rootFolderId: string, driveFileId: string): Promise<DriveItem | null> { const manager = await getPaperManagerFolder(drive, rootFolderId); if (!manager) return null; const folder = await findChildByName(drive, manager.id, PAPER_MANAGER_ANNOTATIONS_FOLDER_NAME); return folder ? findChildByName(drive, folder.id, `${driveFileId}.annotations.json`) : null; }
 
 function getManagedIndexFileName(kind: ManagedIndexKind, userId?: string): string {
   switch (kind) {
@@ -781,6 +787,9 @@ function createDriveClient(
     async downloadFileText(fileId) {
       return downloadDriveFileText(drive, fileId);
     },
+
+    async downloadPaperAnnotations(rootFolderId, driveFileId) { const existing = await findPaperAnnotationsFile(drive, rootFolderId, driveFileId); return existing ? downloadDriveFileText(drive, existing.id) : null; },
+    async uploadPaperAnnotations(rootFolderId, driveFileId, json) { if (accessMode === "public") throw createReadOnlyDriveError(); const folder = await getOrCreateAnnotationsFolder(drive, rootFolderId); const existing = await findPaperAnnotationsFile(drive, rootFolderId, driveFileId); const media = { mimeType: "application/json", body: Readable.from(json) }; if (existing) { const updated = await drive.files.update({ fileId: existing.id, media, fields: "id", supportsAllDrives: true }); return { fileId: updated.data.id ?? existing.id }; } const created = await drive.files.create({ requestBody: { name: `${driveFileId}.annotations.json`, parents: [folder.id] }, media, fields: "id", supportsAllDrives: true }); return { fileId: created.data.id ?? randomUUID() }; },
 
     async uploadOrUpdatePublicCatalog(json) {
       if (accessMode === "public") {
